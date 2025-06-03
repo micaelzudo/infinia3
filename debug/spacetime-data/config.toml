@@ -1,0 +1,13 @@
+[server]
+host = "127.0.0.1"
+port = 3000
+
+[certificate-authority]
+jwt-priv-key-path = "jwt_private.pem"
+jwt-pub-key-path = "jwt_public.pem"
+
+[storage]
+path = "spacetime-data"
+
+[logging]
+level = "info"

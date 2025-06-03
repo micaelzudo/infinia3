@@ -1,0 +1,41 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "lib": ["ESNext", "DOM"],
+    "moduleResolution": "Node",
+    "strict": true,
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "preserveSymlinks": true,
+    "noEmit": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "paths": {
+      "@Sketchbook-master/*": ["debug/Sketchbook-master/src/ts/*"],
+      "@Sketchbook-assets/*": ["debug/Sketchbook-master/build/assets/*"]
+    }
+  },
+  "include": [
+    "src",
+    "debug/**/*.ts",
+    "debug/**/*.mts",
+    "debug/**/*.tsx",
+    "debug/**/*.jsx",
+    "modules/**/*.ts",
+    "modules/**/*.mts",
+    "modules/**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist", 
+    "debug/debugMain.ts"
+  ]
+}

@@ -1,0 +1,1 @@
+export const MAX_SHADER_ELEMENTS = 5; // How many top elements to pass to the shader 

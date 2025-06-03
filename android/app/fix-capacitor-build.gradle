@@ -1,0 +1,14 @@
+// This script ensures the capacitor.build.gradle file uses Java 17
+afterEvaluate {
+    def capacitorBuildFile = file("$projectDir/capacitor.build.gradle")
+    if (capacitorBuildFile.exists()) {
+        def content = capacitorBuildFile.text
+        content = content.replaceAll('JavaVersion\\.VERSION_\\d+', 'JavaVersion.VERSION_17')
+        
+        // Only write if changes are needed
+        if (!content.equals(capacitorBuildFile.text)) {
+            capacitorBuildFile.write(content)
+            println "Updated $capacitorBuildFile to use Java 17"
+        }
+    }
+}

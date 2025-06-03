@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Galaxy Simulator</string>
+    <string name="title_activity_main">Galaxy Simulator</string>
+    <string name="package_name">com.yourname.galaxy</string>
+    <string name="custom_url_scheme">com.yourname.galaxy</string>
+</resources>

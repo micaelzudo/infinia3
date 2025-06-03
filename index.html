@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- <link rel="icon" type="image/svg+xml" href="/vite.svg" /> -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <meta name="theme-color" content="#050510" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="HandheldFriendly" content="True" />
+    <meta name="MobileOptimized" content="320" />
+    <meta name="msapplication-tap-highlight" content="no" />
+    <title>Infinia - Procedural World</title>
+    <link rel="stylesheet" href="./debug/styles/debugPanel.css">
+    <link rel="stylesheet" href="./src/styles/mobile.css">
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        font-family: Arial, sans-serif;
+        background-color: #050510;
+      }
+      
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+      
+      #loading {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.7);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        color: white;
+        font-size: 24px;
+        z-index: 1000;
+      }
+      
+      .loader {
+        border: 5px solid rgba(0, 120, 255, 0.2);
+        border-radius: 50%;
+        border-top: 5px solid rgba(0, 120, 255, 0.8);
+        width: 50px;
+        height: 50px;
+        animation: spin 1s linear infinite;
+        margin-bottom: 20px;
+      }
+
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      
+      /* First-person mode elements */
+      .crosshair {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: white;
+        font-size: 24px;
+        font-weight: bold;
+        z-index: 50;
+        pointer-events: none;
+        user-select: none;
+      }
+      
+      #mobile-top-bar {
+        display: none;
+        position: absolute;
+        left: 8px;
+        right: 8px;
+        top: 8px;
+        color: white;
+        z-index: 50;
+      }
+      
+      #top-bar {
+        display: none;
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        top: 16px;
+        align-items: center;
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 14px;
+        z-index: 50;
+      }
+      
+      #modal {
+        display: none;
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        align-items: center;
+        justify-content: center;
+        background-color: rgba(26, 32, 44, 0.9);
+        cursor: pointer;
+        z-index: 50;
+      }
+      
+      .control-panel {
+        display: flex;
+        flex-direction: column;
+        text-align: center;
+        color: #e2e8f0;
+        background-color: #2d3748;
+        border: 1px solid #4a5568;
+        border-radius: 8px;
+        padding: 35px 40px;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.5);
+        max-width: 90%;
+        width: 480px;
+      }
+      
+      .control-grid {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 10px 15px;
+        margin-top: 24px;
+        font-size: 0.95em;
+        color: #cbd5e0;
+        text-align: left;
+      }
+      .control-grid > div {
+        display: contents;
+      }
+      .control-grid > div > span:first-child {
+        justify-self: start;
+        white-space: nowrap;
+      }
+      .control-grid > div > span:last-child:not(.control-key) {
+        justify-self: start;
+      }
+      
+      .control-key {
+        background-color: #4a5568;
+        color: #edf2f7;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 4px;
+        margin-right: 6px;
+        display: inline-block;
+        line-height: 1.4;
+      }
+      
+      .start-button {
+        border: none;
+        border-radius: 5px;
+        background-color: #4a5568;
+        color: #edf2f7;
+        padding: 10px 16px;
+        margin-top: 35px;
+        transition: background-color 0.2s ease, transform 0.1s ease;
+        font-weight: 500;
+        cursor: pointer;
+      }
+      
+      .start-button:hover {
+        background-color: #5a6a82;
+      }
+      
+      .start-button:active {
+        background-color: #718096;
+        transform: scale(0.98);
+      }
+      
+      #controller-look, #controller-move {
+        position: absolute;
+        z-index: 10;
+        touch-action: none;
+      }
+      
+      #controller-look {
+        top: 0;
+        right: 0;
+        width: 50%;
+        height: 100%;
+      }
+      
+      #controller-move {
+        top: 0;
+        left: 0;
+        width: 50%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="loading">
+      <div class="loader"></div>
+      <div>Loading...</div>
+    </div>
+    
+    <!-- First person mode elements -->
+    <div class="crosshair">+</div>
+    
+    <div id="mobile-top-bar">
+      <div>
+        <span class="control-key">Drag</span> left side to move
+      </div>
+      <div style="margin-top: 8px;">
+        <span class="control-key">Drag</span> right side to look
+      </div>
+    </div>
+    
+    <div id="top-bar">
+      Press <span style="font-weight: bold; margin: 0 4px;">ESC</span> to exit
+    </div>
+    
+    <div id="modal">
+      <div class="control-panel">
+        <h1 style="font-weight: bold; margin-bottom: 32px;">CONTROLS</h1>
+        <div class="control-grid">
+          <div>
+            <span>
+            <span class="control-key">W</span>
+            <span class="control-key">A</span>
+            <span class="control-key">S</span>
+            <span class="control-key">D</span>
+            or
+              <span class="control-key">Arrow Keys</span>
+            </span>
+            <span>to move</span>
+          </div>
+          <div>
+            <span><span class="control-key">Space</span></span>
+            <span>to jump</span>
+          </div>
+          <div>
+            <span><span class="control-key">Mouse</span></span>
+            <span>to look around</span>
+          </div>
+          <div>
+            <span><span class="control-key">Left Click</span></span>
+            <span>to add terrain</span>
+          </div>
+          <div>
+            <span><span class="control-key">Right Click</span></span>
+            <span>to remove terrain</span>
+          </div>
+        </div>
+        <div class="start-button" title="Click to enter pointer lock and start controlling the character">
+          Click anywhere to start
+        </div>
+      </div>
+    </div>
+    
+:start_line:257
+-------
+    <canvas id="app"></canvas>
+    <canvas id="controller-look"></canvas>
+    <canvas id="controller-move"></canvas>
+
+    <div id="navmesh-controls" style="position: absolute; top: 10px; left: 10px; z-index: 100; background-color: rgba(255, 255, 255, 0.5); padding: 10px; border-radius: 5px;">
+      <button id="generate-navmesh-button">Generate NavMesh</button>
+      <label><input type="checkbox" id="debug-navmesh-checkbox">Show Debug</label>
+    </div>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

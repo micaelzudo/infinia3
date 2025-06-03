@@ -1,0 +1,518 @@
+/* --- debug/styles/debugPanel.css --- */
+
+/* --- General Debug Panel Structure --- */
+#main-debug-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 300px;
+    height: 100vh;
+    max-height: 100vh;
+    background-color: #1a202c; /* Very dark blue-gray */
+    border-right: 1px solid #2d3748; /* Subtle border */
+    z-index: 19000;
+    display: none; /* Initially hidden, controlled by JS */
+    box-shadow: 3px 0 10px rgba(0,0,0,0.4);
+    padding: 10px 0; /* Vertical padding */
+    box-sizing: border-box;
+    flex-direction: column;
+    color: #cbd5e0; /* Lighter default text */
+    /* overflowY: auto; /* Let contentScrollArea handle scrolling */
+}
+
+#main-debug-panel-title {
+    margin: 5px 18px 15px 18px; /* Horizontal margin */
+    padding-bottom: 12px;
+    border-bottom: 1px solid #2d3748;
+    text-align: center;
+    color: #e2e8f0;
+    font-size: 1.15em;
+    font-weight: 600;
+    flex-shrink: 0; /* Prevent title from shrinking */
+}
+
+#main-debug-content-scroll-area {
+    flex-grow: 1; /* Take remaining vertical space */
+    overflow-y: auto; /* Allow this part to scroll */
+    padding: 0 18px 20px 18px; /* Padding for sections inside */
+    display: flex;
+    flex-direction: column;
+}
+
+/* --- General Section Styles --- */
+.debug-section-container {
+    /* Base styles for sections like debug, mining, generation */
+    /* Specific layout styles like flex-grow will be on the ID */
+}
+
+.debug-section-header {
+    margin: 25px 0 12px 0; /* Increased top margin for separation */
+    color: #a0aec0;
+    font-size: 1.05em;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #4a5568;
+    font-weight: 600;
+}
+
+.debug-section-header-first {
+    margin-top: 5px; /* Less top margin for the very first section */
+}
+
+.debug-info-text {
+    font-size: 0.88em;
+    color: #a0aec0;
+    margin: 6px 0 10px 0;
+    line-height: 1.5;
+}
+
+/* --- Button Styles --- */
+.debug-button {
+    display: block;
+    width: 100%;
+    padding: 8px 10px;
+    margin: 6px 0;
+    background-color: #4a5568; /* Default grayish blue */
+    color: #edf2f7; /* Lighter text */
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    text-align: center;
+    font-size: 0.9em;
+    font-weight: 500;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    user-select: none; /* Prevent text selection */
+}
+
+.debug-button:hover {
+    background-color: #5a6a82;
+}
+
+.debug-button:active {
+    background-color: #718096;
+    transform: scale(0.98);
+}
+
+.debug-button-destructive {
+    background-color: #b71c1c; /* Darker red */
+}
+
+.debug-button-destructive:hover {
+    background-color: #d32f2f;
+}
+
+.debug-button-destructive:active {
+    background-color: #e57373;
+    transform: scale(0.98);
+}
+
+#main-debug-panel-close-button {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background-color: transparent;
+    color: #a0aec0;
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    line-height: 22px;
+    text-align: center;
+    cursor: pointer;
+    font-size: 1.3em;
+    font-weight: bold;
+    transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+#main-debug-panel-close-button:hover {
+    color: #fff;
+    background-color: #718096; /* Gray hover */
+}
+
+/* --- Mining Section Specific Layout --- */
+/* THIS IS THE CRITICAL PART FOR THE LAYOUT ISSUE */
+#main-debug-section-mining {
+    display: flex;      /* Use flex column for internal layout */
+    flex-direction: column;
+    flex-grow: 1;       /* Allow this section to grow vertically */
+    min-height: 0;      /* Crucial for allowing growth in flex parents */
+    /* display: none; /* Initially hidden, controlled by JS */
+}
+
+/* --- Mining Tab Section Specific Layout --- */
+#main-debug-section-mining-tab {
+    display: flex;      /* Use flex column for internal layout */
+    flex-direction: column;
+    flex-grow: 1;       /* Allow this section to grow vertically */
+    min-height: 0;      /* Crucial for allowing growth in flex parents */
+}
+
+/* Mining Tab Container */
+.mining-tab-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    padding: 10px 0;
+    height: 100%;
+    overflow-y: auto;
+}
+
+/* Mining Tab Content */
+.mining-tab-content {
+    display: flex;
+    gap: 15px;
+    flex: 1;
+}
+
+/* Mining Tab Column */
+.mining-tab-column {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+/* Mining Tab Header */
+.mining-tab-header {
+    border-bottom: 1px solid #4a5568;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+}
+
+.mining-tab-header h2 {
+    margin: 0 0 5px 0;
+    font-size: 18px;
+    color: #e2e8f0;
+}
+
+.mining-tab-header p {
+    margin: 0;
+    font-size: 14px;
+    color: #a0aec0;
+}
+
+#mining-utilities-container {
+    padding: 10px 0;
+    border-bottom: 1px solid #4a5568;
+    flex-shrink: 0; /* Prevent shrinking */
+}
+
+#mining-utilities-container h5 { /* Style for the 'Mining/Editing Utilities' title */
+     margin: 0 0 10px 0;
+     color: #a0aec0;
+     font-size: 1em; /* Slightly smaller */
+     font-weight: 600;
+}
+
+/* Style basic buttons within utilities for now */
+#mining-utilities-container button {
+    padding: 5px 10px;
+    margin-top: 5px;
+    margin-right: 5px; /* Add some spacing */
+     background-color: #4a5568;
+     color: #edf2f7;
+     border: none;
+     border-radius: 4px;
+     cursor: pointer;
+     font-size: 0.85em;
+     transition: background-color 0.2s ease, transform 0.1s ease;
+}
+#mining-utilities-container button:hover {
+    background-color: #5a6a82;
+}
+#mining-utilities-container button:active {
+    background-color: #718096;
+    transform: scale(0.98);
+}
+
+
+/* Slider Row Styles */
+.slider-control-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.slider-control-row label {
+    width: 80px; /* Fixed width for label */
+    font-size: 0.9em;
+    margin-right: 10px;
+    flex-shrink: 0; /* Prevent label from shrinking */
+    color: #a0aec0;
+}
+
+.slider-control-row input[type="range"] {
+    flex-grow: 1; /* Allow slider to take remaining space */
+    cursor: pointer;
+}
+
+.slider-control-row .slider-value {
+    width: 30px;
+    text-align: right;
+    margin-left: 10px;
+    font-size: 0.85em;
+    color: #a0aec0;
+}
+
+/* Dropdown Row Styles */
+.dropdown-control-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.dropdown-control-row label {
+    width: 80px; /* Fixed width for label */
+    font-size: 0.9em;
+    margin-right: 10px;
+    flex-shrink: 0; /* Prevent label from shrinking */
+    color: #a0aec0;
+}
+
+.dropdown-control-row select {
+    flex-grow: 1; /* Allow dropdown to take remaining space */
+    padding: 4px 8px;
+    background-color: #2d3748;
+    color: #e2e8f0;
+    border: 1px solid #4a5568;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9em;
+}
+
+/* Mode Button Styles */
+#mining-mode-button {
+    width: 100%;
+    margin-top: 10px;
+    padding: 6px 12px;
+}
+
+.mode-add {
+    background-color: #2f855a !important; /* Green for add mode */
+}
+
+.mode-add:hover {
+    background-color: #38a169 !important;
+}
+
+.mode-remove {
+    background-color: #c53030 !important; /* Red for remove mode */
+}
+
+.mode-remove:hover {
+    background-color: #e53e3e !important;
+}
+
+/* Grid Button Styles */
+.grid-hidden {
+    background-color: #4a5568 !important; /* Dark blue-gray for hidden state */
+}
+
+.grid-hidden:hover {
+    background-color: #718096 !important;
+}
+
+.grid-visible {
+    background-color: #6b46c1 !important; /* Purple for visible state */
+}
+
+.grid-visible:hover {
+    background-color: #805ad5 !important;
+}
+
+
+#mining-panel-canvas-container {
+    width: 100%;
+    background-color: #111; /* Dark background for canvas */
+    position: relative; /* Needed for canvas absolute positioning if used */
+    overflow: hidden; /* Clip the canvas */
+    border-radius: 4px;
+    margin-top: 10px;
+    flex-grow: 1;       /* CRITICAL: Allow canvas container to grow */
+    min-height: 300px;  /* Ensure it has a minimum size */
+    display: flex;      /* Ensure canvas inside fills it */
+}
+
+#mining-panel-canvas-container canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+#mining-status-element {
+    padding: 5px 0;
+    font-size: 0.85em;
+    color: #a0aec0;
+    border-top: 1px solid #4a5568;
+    margin-top: 10px;
+    text-align: center;
+    flex-shrink: 0; /* Prevent shrinking */
+}
+
+/* --- Generation Section Specific --- */
+#main-debug-section-generation {
+    /* Add specific styles if needed */
+}
+
+.dynamic-gen-controls {
+    /* Styles for dynamically added generation controls */
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed #4a5568; /* Separator */
+}
+
+/* --- Isolated Editor Overlay --- (Copied basic structure, can refine) */
+#isolated-editor-overlay {
+    position: fixed;
+    top: 4%;
+    left: 5%;
+    width: 90%;
+    height: 92%;
+    background-color: #2d3748;
+    border: 1px solid #4a5568;
+    border-radius: 8px;
+    box-shadow: 0 15px 40px rgba(0,0,0,0.6);
+    z-index: 20000;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#isolated-editor-header {
+    padding: 10px 18px;
+    background-color: #1a202c;
+    border-bottom: 1px solid #4a5568;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+#isolated-editor-header h4 {
+    margin: 0;
+    color: #e2e8f0;
+    font-weight: 600;
+}
+
+#isolated-editor-close-button {
+    background-color: transparent;
+    color: #a0aec0;
+    border: none;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    line-height: 26px;
+    text-align: center;
+    cursor: pointer;
+    font-size: 1.4em;
+    font-weight: bold;
+    transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+#isolated-editor-close-button:hover {
+    color: #fff;
+    background-color: #e53e3e; /* Red hover */
+}
+
+/* --- NEW: Main Content Area (Utilities + Canvas) --- */
+#isolated-editor-content-area {
+    display: flex;
+    flex-direction: row; /* Arrange side panel and canvas horizontally */
+    flex-grow: 1;       /* Take remaining vertical space */
+    overflow: hidden;   /* Prevent internal scrolling */
+}
+
+/* --- NEW: Utilities Side Panel --- */
+#isolated-editor-utilities-panel {
+    width: 220px;          /* Fixed width for the panel */
+    flex-shrink: 0;       /* Prevent panel from shrinking */
+    padding: 15px;
+    background-color: #1a202c; /* Match header/footer */
+    border-right: 1px solid #4a5568; /* Separator */
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;     /* Allow panel to scroll if content overflows */
+    color: #cbd5e0;
+}
+
+#isolated-editor-utilities-panel h5 {
+    margin: 0 0 15px 0;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #4a5568;
+    color: #e2e8f0;
+    font-size: 1.05em;
+    font-weight: 600;
+    text-align: center;
+}
+
+/* Style buttons inside the utilities panel */
+#isolated-editor-utilities-panel button {
+     padding: 6px 12px;
+     margin-bottom: 10px; /* Spacing between controls */
+     background-color: #4a5568;
+     color: #edf2f7;
+     border: none;
+     border-radius: 4px;
+     cursor: pointer;
+     font-size: 0.9em;
+     width: 100%; /* Make buttons full width */
+     transition: background-color 0.2s ease, transform 0.1s ease;
+}
+#isolated-editor-utilities-panel button:hover {
+    background-color: #5a6a82;
+}
+#isolated-editor-utilities-panel button:active {
+    background-color: #718096;
+    transform: scale(0.98);
+}
+
+/* Style slider rows inside the utilities panel */
+#isolated-editor-utilities-panel .slider-control-row {
+    width: 100%; /* Ensure row takes full width */
+    margin-bottom: 15px; /* More spacing for sliders */
+}
+
+#isolated-editor-utilities-panel .slider-control-row label {
+    width: auto; /* Allow label to size naturally */
+    margin-bottom: 5px; /* Space between label and slider */
+    display: block; /* Make label take full line */
+    font-size: 0.85em;
+    color: #a0aec0;
+}
+
+#isolated-editor-utilities-panel .slider-control-row input[type="range"] {
+    width: 100%; /* Make slider take full width */
+}
+
+/* --- Canvas Container (Now a flex item in a row) --- */
+#isolated-viewer-canvas-container {
+    flex-grow: 1; /* Allow canvas container to fill remaining horizontal space */
+    position: relative; /* Keep for potential absolute positioning inside */
+    overflow: hidden;
+    /* background-color: #333; /* Optional: different bg for debugging */
+}
+
+/* Canvas element itself still fills its container */
+#isolated-viewer-canvas-container canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* --- Status Bar (Reset button removed) --- */
+#isolated-editor-status-bar {
+    padding: 8px 15px;
+    background-color: #1a202c;
+    border-top: 1px solid #4a5568;
+    display: flex;
+    justify-content: center; /* Center status text now */
+    align-items: center;
+    flex-shrink: 0;
+    font-size: 0.9em;
+    color: #a0aec0;
+    min-height: 35px; /* Ensure consistent height */
+    box-sizing: border-box;
+}
+
+#isolated-editor-status-text {
+    /* Specific styles if needed */
+}

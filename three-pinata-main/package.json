@@ -1,0 +1,14 @@
+{
+  "name": "three-pinata-monorepo",
+  "private": true,
+  "workspaces": [
+    "demo",
+    "lib"
+  ],
+  "scripts": {
+    "build:lib": "npm run build -w @dgreenheck/three-pinata",
+    "build:demo": "npm run build -w three-pinata-demo",
+    "dev": "npm run dev -w three-pinata-demo",
+    "test": "jest"
+  }
+}

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Primary Meta Tags -->
+    <title>Marching Cubes</title>
+    <meta name="title" content="Marching Cubes" />
+    <meta
+      name="description"
+      content="Walk around in a randomly-generated 3D world created with the marching cubes algorithm"
+    />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://marching-cubes-v2.vercel.app/" />
+    <meta
+      property="og:title"
+      content="Marching Cubes - A 3D Terrain Generator"
+    />
+    <meta
+      property="og:description"
+      content="Walk around in a randomly-generated 3D world with destructible terrain. Created with the marching cubes algorithm."
+    />
+    <meta property="og:image" content="https://iili.io/rL9SMG.md.png" />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta
+      property="twitter:url"
+      content="https://marching-cubes-v2.vercel.app/"
+    />
+    <meta
+      property="twitter:title"
+      content="Marching Cubes - A 3D Terrain Generator"
+    />
+    <meta
+      property="twitter:description"
+      content="Walk around in a randomly-generated 3D world with destructible terrain. Created with the marching cubes algorithm."
+    />
+    <meta property="twitter:image" content="https://iili.io/rL9SMG.md.png" />
+
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link href="/styles/tailwind.css" rel="stylesheet" />
+    <title>Marching Cubes</title>
+  </head>
+  <body class="overflow-y-auto">
+    <div id="canvas-container" class="relative w-full h-full overflow-hidden">
+      <div
+        class="absolute inset-0 flex flex-col items-center justify-center z-50"
+      >
+        <h1 class="text-black text-6xl drop-shadow-lg opacity-90">
+          MARCHING
+        </h1>
+        <h1 class="text-white text-6xl drop-shadow-lg opacity-90">
+          CUBES
+        </h1>
+        <a
+          class="flex items-center bg-black text-white font-bold drop-shadow-lg px-4 py-2 opacity-80 mt-8 rounded lg:mt-12"
+          href="noise-editor.html"
+        >
+          GO TO EDITOR
+          <svg
+            class="w-5 h-5 fill-current ml-2"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+          >
+            <path fill="none" d="M0 0h24v24H0z" />
+            <path
+              d="M16.172 11l-5.364-5.364 1.414-1.414L20 12l-7.778 7.778-1.414-1.414L16.172 13H4v-2z"
+            />
+          </svg>
+        </a>
+      </div>
+    </div>
+    <div class="grid grid-cols-mid-auto gap-4 pb-16">
+      <main class="col-start-2 w-full text-white">
+        <h2 class="text-xl mb-4 mt-8">NOISE EDITOR</h2>
+        <img
+          class="w-full border border-white"
+          src="screenshots/noise-editor-video.gif"
+          alt="Noise editor video"
+        />
+        <h2 class="text-xl mb-4 mt-16">FIRST PERSON MODE</h2>
+        <img
+          class="w-full border border-white"
+          src="screenshots/first-person-video.gif"
+          alt="First person video"
+        />
+        <h2 class="text-xl mb-4 mt-16">TERRAIN EDITOR</h2>
+        <img
+          class="w-full border border-white"
+          src="screenshots/edit-terrain-video.gif"
+          alt="Terrain editor video"
+        />
+      </main>
+    </div>
+    <footer class="w-full flex justify-center text-white py-4">
+      <p class="text-sm text-neutral-500">
+        Made by @ivanwang123 ·
+        <a
+          class="underline underline-offset-4"
+          href="https://github.com/ivanwang123/marching-cubes-v2"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Source code on GitHub
+        </a>
+      </p>
+    </footer>
+    <canvas id="app"></canvas>
+    <script type="module" src="/src/home.ts"></script>
+  </body>
+</html>

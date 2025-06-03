@@ -1,0 +1,92 @@
+/* Mining Effects Styles */
+
+.mining-effects-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 10;
+    overflow: hidden;
+}
+
+.mining-effect {
+    position: absolute;
+    font-family: 'Arial', sans-serif;
+    font-weight: bold;
+    font-size: 16px;
+    white-space: nowrap;
+    pointer-events: none;
+    animation: float-up 2s ease-out forwards;
+    text-shadow: 0 0 5px currentColor;
+}
+
+@keyframes float-up {
+    0% {
+        opacity: 0;
+        transform: translateY(0);
+    }
+    10% {
+        opacity: 1;
+    }
+    90% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-50px);
+    }
+}
+
+/* Mining Inventory Panel */
+.mining-inventory-container {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 250px;
+    max-height: 300px;
+    z-index: 20;
+}
+
+/* Mining Tools Panel */
+.mining-tools-container {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    width: 250px;
+    max-height: 300px;
+    z-index: 20;
+}
+
+/* Mining Status Bar */
+.mining-status-bar {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    right: 270px;
+    background-color: rgba(30, 30, 30, 0.8);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-family: 'Arial', sans-serif;
+    font-size: 14px;
+    z-index: 20;
+}
+
+/* Internal Grid Toggle Button */
+.grid-hidden {
+    background-color: #4a5568 !important; /* Dark blue-gray for hidden state */
+}
+
+.grid-hidden:hover {
+    background-color: #718096 !important;
+}
+
+.grid-visible {
+    background-color: #6b46c1 !important; /* Purple for visible state */
+}
+
+.grid-visible:hover {
+    background-color: #805ad5 !important;
+}

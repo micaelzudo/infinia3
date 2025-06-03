@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Third Person Test</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #1a1a1a;
+      color: #ffffff;
+      font-family: Arial, sans-serif;
+    }
+    
+    #container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+    
+    #controls {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background-color: rgba(0, 0, 0, 0.5);
+      padding: 10px;
+      border-radius: 5px;
+      z-index: 100;
+    }
+    
+    button {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      margin: 5px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    
+    button:hover {
+      background-color: #45a049;
+    }
+    
+    #status {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      background-color: rgba(0, 0, 0, 0.5);
+      padding: 10px;
+      border-radius: 5px;
+      font-family: monospace;
+      z-index: 100;
+    }
+    
+    #log {
+      position: absolute;
+      bottom: 60px;
+      left: 10px;
+      width: 300px;
+      height: 200px;
+      background-color: rgba(0, 0, 0, 0.5);
+      padding: 10px;
+      border-radius: 5px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 12px;
+      z-index: 100;
+    }
+  </style>
+</head>
+<body>
+  <div id="container"></div>
+  <div id="controls">
+    <button id="toggle-third-person">Enter Third Person</button>
+    <button id="toggle-first-person">Enter First Person</button>
+    <button id="reset-view">Reset View</button>
+  </div>
+  <div id="status">Status: Initializing...</div>
+  <div id="log"></div>
+  
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+    import { NoiseLayers } from './debug/types_debug.js';
+    import { initIsolatedViewer, generateIsolatedTerrain, setupIsolatedEditing } from './debug/modules/ui/isolatedTerrainViewer.js';
+    
+    // DOM Elements
+    const container = document.getElementById('container');
+    const statusElement = document.getElementById('status');
+    const logElement = document.getElementById('log');
+    const toggleThirdPersonButton = document.getElementById('toggle-third-person');
+    const toggleFirstPersonButton = document.getElementById('toggle-first-person');
+    const resetViewButton = document.getElementById('reset-view');
+    
+    // Initialize viewer
+    initIsolatedViewer(container);
+    
+    // Setup editing tools
+    setupIsolatedEditing(statusElement, logElement, (keys) => {
+      console.log('Affected chunk keys:', keys);
+    });
+    
+    // Generate terrain with default settings
+    const noiseLayers = {
+      layers: [
+        {
+          type: 'fbm',
+          amplitude: 1.0,
+          frequency: 0.05,
+          octaves: 4,
+          persistence: 0.5,
+          lacunarity: 2.0,
+          ridgeOffset: 1.0,
+          seed: 12345,
+          weightMapDepth: 0.5,
+          weightMapHeight: 0.5
+        }
+      ]
+    };
+    
+    const compInfo = {
+      topElements: {
+        elements: [
+          { name: 'Stone', color: new THREE.Color(0x808080), hardness: 2, weight: 1.0 },
+          { name: 'Grass', color: new THREE.Color(0x507050), hardness: 1, weight: 0.8 },
+          { name: 'Dirt', color: new THREE.Color(0x704030), hardness: 1, weight: 0.6 },
+          { name: 'Sand', color: new THREE.Color(0xc2b280), hardness: 1, weight: 0.4 },
+          { name: 'Water', color: new THREE.Color(0x3050a0), hardness: 0, weight: 0.2 }
+        ]
+      }
+    };
+    
+    generateIsolatedTerrain({
+      noiseLayers,
+      seed: { value: 12345 },
+      compInfo,
+      noiseScale: 1.0,
+      planetOffset: new THREE.Vector3(0, 0, 0)
+    });
+    
+    // Update status
+    statusElement.textContent = 'Status: Ready';
+    
+    // Event listeners
+    toggleThirdPersonButton.addEventListener('click', () => {
+      // This calls the function in isolatedTerrainViewer.ts
+      if (window.enterThirdPersonMode) {
+        window.enterThirdPersonMode();
+        toggleThirdPersonButton.textContent = 'Exit Third Person';
+      } else {
+        console.error('enterThirdPersonMode function not found');
+        statusElement.textContent = 'Status: Error - Third person mode function not available';
+      }
+    });
+    
+    toggleFirstPersonButton.addEventListener('click', () => {
+      // This calls the function in isolatedTerrainViewer.ts
+      if (window.enterFirstPersonMode) {
+        window.enterFirstPersonMode();
+        toggleFirstPersonButton.textContent = 'Exit First Person';
+      } else {
+        console.error('enterFirstPersonMode function not found');
+        statusElement.textContent = 'Status: Error - First person mode function not available';
+      }
+    });
+    
+    resetViewButton.addEventListener('click', () => {
+      // This calls the function in isolatedTerrainViewer.ts
+      if (window.resetIsolatedView) {
+        window.resetIsolatedView();
+      } else {
+        console.error('resetIsolatedView function not found');
+        statusElement.textContent = 'Status: Error - Reset view function not available';
+      }
+    });
+    
+    // Log function for debugging
+    function log(message) {
+      const logEntry = document.createElement('div');
+      logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logElement.appendChild(logEntry);
+      logElement.scrollTop = logElement.scrollHeight;
+    }
+    
+    // Export functions to global scope for button access
+    window.enterThirdPersonMode = () => {
+      log('Entering third person mode...');
+      // This will indirectly call the function in isolatedTerrainViewer.ts
+      const event = new MouseEvent('click', {
+        view: window,
+        bubbles: true,
+        cancelable: true
+      });
+      document.getElementById('isolated-editor-spawn-third-person-button')?.dispatchEvent(event);
+    };
+    
+    window.enterFirstPersonMode = () => {
+      log('Entering first person mode...');
+      // This will indirectly call the function in isolatedTerrainViewer.ts
+      const event = new MouseEvent('click', {
+        view: window,
+        bubbles: true,
+        cancelable: true
+      });
+      document.getElementById('isolated-editor-spawn-button')?.dispatchEvent(event);
+    };
+    
+    window.resetIsolatedView = () => {
+      log('Resetting view...');
+      // This will indirectly call the function in isolatedTerrainViewer.ts
+      const event = new MouseEvent('click', {
+        view: window,
+        bubbles: true,
+        cancelable: true
+      });
+      document.getElementById('isolated-editor-reset-button')?.dispatchEvent(event);
+    };
+    
+    // Add global error handler
+    window.addEventListener('error', (event) => {
+      log(`ERROR: ${event.message} at ${event.filename}:${event.lineno}`);
+    });
+    
+    // Log initialization complete
+    log('Third Person Test initialized');
+  </script>
+</body>
+</html> 

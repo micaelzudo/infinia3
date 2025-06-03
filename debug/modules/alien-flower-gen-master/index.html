@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+
+<html>
+	
+	<head>
+		<title> Oh a unique flower generator </title>
+		<script src="js/three.js"></script>
+		<script src="libs/perlinnoise.js"></script>
+		<script src="libs/OrbitControls.js"></script>
+		<script src="libs/EffectComposer.js"></script>
+		<script src="libs/RenderPass.js"></script>
+		<script src="libs/postprocessing/TexturePass.js"></script>
+		<script src="libs/ShaderPass.js"></script>
+		<script src="libs/MaskPass.js"></script>
+		<script src="libs/CopyShader.js"></script>
+		<script src="libs/shaders/ConvolutionShader.js"></script>
+		<script src="libs/postprocessing/BloomPass.js"></script>
+		<script src="libs/shaders/FXAAShader.js"></script>
+		<script src="libs/rng.js"></script> <!-- //https://github.com/skeeto/rng-js -->
+		<script src="libs/dat.gui.js"></script>
+		<script src="libs/SwipeControls.js"></script>
+		<script src="flowers.js"></script>
+		
+		<link href="https://fonts.googleapis.com/css?family=Galada|PT+Sans+Narrow&display=swap" rel="stylesheet">
+		<link rel="stylesheet" href="animate.min.css">
+
+		
+		<style>
+			body
+			{
+				margin: 0; overflow: hidden;
+			
+			}
+			
+			#urlresult 
+			{
+				font-family: 'PT Sans Narrow', sans-serif;
+				position: absolute;
+				top: 60px;
+				width: 45%;
+				text-align: left;
+				z-index: 100;
+				display:block;
+				left: 55px;
+				background: rgba(76, 175, 80, 0.0);
+				font-weight: bold;
+				animation-delay: 2s;
+			}
+			
+			#surpriseElement
+			{
+				position: absolute;
+				font-size: 150%;
+				left: 100px;
+			
+			}
+			
+			#revElement
+			{
+				position: absolute;
+				font-size: 85%;
+				left: 100px;
+				top: 50px;
+				text-align: center;
+			}
+			
+			#reveal2 
+			{
+				position: absolute;
+				top: 95px;
+				width: 45%;
+				text-align: left;
+				z-index: 100;
+				display:block;
+				left: 55px;
+				background: rgba(76, 175, 80, 0.0);
+				font-family: 'PT Sans Narrow', sans-serif;
+				animation-delay: 8s;
+			}
+			
+		</style>
+	</head>
+	<body>
+		
+		<!-- output -->
+		<div id="WebGL-output"></div>
+		<div id="gui"></div>
+		
+		<div id="urlresult"></div>
+		<div id="reveal2"></div>
+		
+		
+		<script>
+			
+			var bloomRes 		= 256;
+			var shadowMapRes 	= 2048;
+			var shadowMapType 	= THREE.PCFSoftShadowMap;
+			
+			var nameControl = new function()
+			{
+				this.name1 = "";
+				this.name2 = "";
+			}
+			
+			var rngControls = new function()
+			{
+				this.x = 235;
+				this.y = 114;
+			}
+			
+			var gui;
+			
+			//save the old random
+			var systemRNG = Math.random;
+			
+			function capFirstLetter(str) 
+			{
+				return str.charAt(0).toUpperCase() + str.slice(1);
+			}
+			
+			function SeedRNG()
+			{
+				<!-- Seed PRNG -->
+				nameControl.name1 = nameControl.name1.replace(" ", "_");
+				nameControl.name2 = nameControl.name2.replace(" ", "_");
+				
+				var name0 = capFirstLetter(nameControl.name1.toLowerCase());
+				var name1 = capFirstLetter(nameControl.name2.toLowerCase());
+				
+				//var combined3 = nameControl.name1.localeCompare(nameControl.name2) > 0 ? (nameControl.name1 + ' and ' + nameControl.name2) : (nameControl.name2 + ' and ' + nameControl.name1);
+				var combined3 = name0.localeCompare(name1) > 0 ? (name0 + ' and ' + name1) : (name1 + ' and ' + name0);
+				
+				//Math.random = RNG.prototype.uniform.bind(new RNG(nameControl.name1 + ' and ' + nameControl.name2));
+				Math.random = RNG.prototype.uniform.bind(new RNG(combined3));
+				
+				var genSeed = Math.random();
+				noise.seed(genSeed);
+			
+				rngControls.x = 235 + Math.random() * (1348);
+				rngControls.y = 114 + Math.random() * (891);
+			}
+			
+			
+			if( (getUrlVars()["x"] == null || getUrlVars()["y"] == null) )
+			{
+				gui = new dat.GUI({ autoplace: false, width: 450 });
+				
+				nameControl.name1 = "placeholder_"+generateRandomString();
+				nameControl.name2 = "placeholder_"+generateRandomString();
+				
+				gui.add(nameControl, 'name1').name("Enter your name");
+				gui.add(nameControl, 'name2').name("Enter the person's name");
+			}
+			else
+			{
+				nameControl.name1 = getUrlVars()["x"];
+				nameControl.name2 = getUrlVars()["y"];
+				
+				var name0 = nameControl.name1.replace("_", " ");
+				var name1 = nameControl.name2.replace("_", " ");
+				
+				document.getElementById("urlresult").innerHTML = "<div id='surpriseElement'>Dear "+name1 +", "+ name0 + " has sent you a flower!</div>";
+				//document.getElementById("urlresult").style.textAlign = "center";
+				document.getElementById("urlresult").className += "animated zoomIn delay-2s";
+				
+				var screenW = screen.width;
+				document.getElementById("urlresult").style.left = (screenW / 2);
+				
+				document.getElementById("reveal2").innerHTML = "<div id='revElement'><a href='https://hellomichaelloke.github.io/alien-flower-gen/'> <div class='animated zoomIn delay-5s'>Click here to create a one and send to somebody else</div></a></div> ";
+			}
+			
+			SeedRNG();
+			
+
+			<!-- setup the scene, camera and the renderer -->
+			var scene 		 	= new THREE.Scene();
+			scene.background 	= new THREE.Color(0xaaccff);
+			scene.fog			= new THREE.FogExp2(0xffffff, 0.0055);
+			
+			var camera 		 	= new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
+			var renderer 	 	= new THREE.WebGLRenderer( {antialias: true} );
+			renderer.autoClear 	= false;
+			
+			//define our deferred rendering passes
+			var renderPass	= new THREE.RenderPass(scene, camera);
+			var effectCopy  = new THREE.ShaderPass(THREE.CopyShader);
+			effectCopy.renderToScreen = true;
+			
+			var bloomPass	= new THREE.BloomPass(1,15,10, bloomRes);
+			bloomPass.renderScene = true;
+			
+			var fxaaPass = new THREE.ShaderPass(THREE.FXAAShader);
+			fxaaPass.renderToScreen = true;
+			
+			var pixelRatio = renderer.getPixelRatio();
+			fxaaPass.material.uniforms['resolution'].value.x = 1 / ( window.innerWidth * pixelRatio );
+			fxaaPass.material.uniforms['resolution'].value.y = 1 / ( window.innerHeight * pixelRatio );
+			
+			var composer 	= new THREE.EffectComposer(renderer);
+			composer.addPass(renderPass);
+			composer.addPass(bloomPass);
+			
+			composer.addPass(fxaaPass);
+			//composer.addPass(effectCopy);
+			
+			<!-- controls -->
+			var controls 		= new THREE.OrbitControls(camera,renderer.domElement);
+			var swipeControls 	= new THREE.SwipeControls(camera);
+			
+			var spotlight;
+			var plane;
+			var flowerGroup;
+			var particleCloud;
+			
+			function genPlant()
+			{
+				for (var i = flowerGroup.children.length - 1; i >= 0; i--) 
+				{
+					flowerGroup.remove(flowerGroup.children[i]);
+				}
+				
+				flowerGroup = GenerateFlower3DObject();
+				scene.add(flowerGroup);
+			}
+			
+			function generateAPlant()
+			{
+				
+				genPlant();
+			}
+			
+			function onGenerateClick(getUrl)
+			{
+				//SeedRNG();
+				//genPlant();
+				generateAPlant();
+			}
+			
+			function onGenerateURL()
+			{
+				var pathname = "https://hellomichaelloke.github.io/alien-flower-gen/" +"?x="+nameControl.name1+"&y="+nameControl.name2;
+				document.getElementById("urlresult").innerHTML = pathname;
+				document.getElementById("reveal2").innerHTML = "Share this flower with the above link";
+			}
+			
+			if(gui != null)
+			{
+				var genClickObj = { add:function(){ onGenerateClick(); }};
+				var genUrlObj = {add:function(){ onGenerateURL(); }};
+				gui.add(genClickObj,'add').name("CLICK HERE TO GENERATE");
+				gui.add(genUrlObj,'add').name("GET URL HERE");
+			}
+			
+			renderer.setClearColor(0xffffff);
+		    renderer.setSize(window.innerWidth, window.innerHeight);
+			renderer.shadowMap.enabled = true;
+			renderer.shadowMapType = THREE.PCFSoftShadowMap;
+			
+			document.getElementById("WebGL-output").appendChild(renderer.domElement);
+			
+			<!-- resize function -->
+			function onResize()
+			{
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+				//renderer.setSize(window.innnerWidth, window.innerHeight);
+			}
+			
+			//Generate a flower
+			function GenerateFlower3DObject()
+			{
+				SeedRNG();
+				var object3D = new THREE.Object3D();
+			
+				//add bulb to scene
+				var bulb = GenerateBulb(0.65, 20, 20);
+				bulb.castShadow = true;
+				bulb.receiveShadow = true;
+				object3D.add(bulb);
+				
+				//add stalk to scene
+				var stalk = GenerateStalk(new THREE.Vector3(0,0,0), new THREE.Vector3(0,-26,0), 5, 10, 0.25, 8);
+				stalk.castShadow = true;
+				stalk.receiveShadow = true;
+				object3D.add(stalk);
+				
+				//add the flower to the scene
+				var flower = GenerateRandomFlower(8, 256, 4, rngControls.x, rngControls.y, 0.35);
+				flower.rotation.x += 0.25;
+				flower.rotation.z += 0.47;
+				flower.castShadow = true;
+				flower.receiveShadow = true;
+				object3D.add(flower);
+				
+				return object3D;
+			}
+
+			<!-- initialization -->
+			function init()
+			{
+				//add lights
+				spotLight = new THREE.SpotLight( 0xffffff );
+				spotLight.position.set( -40, 80, -10 );
+				spotLight.shadowMapWidth = shadowMapRes;
+				spotLight.shadowMapHeight = shadowMapRes;
+				spotLight.castShadow = true;
+				spotLight.shadowDarkness = 1;
+				scene.add( spotLight );
+				
+				var ambientLight = new THREE.AmbientLight(0x0c0c0c);
+				scene.add(ambientLight);
+				
+				
+				//add objects
+				var planeGeometry = new THREE.PlaneGeometry(1000,1000);
+				var planeMaterial = new THREE.MeshPhongMaterial({color: 0xef3e6a, side: THREE.DoubleSide});
+				
+				plane = new THREE.Mesh(planeGeometry, planeMaterial);
+				
+				plane.rotation.x = -0.5 * Math.PI;
+				plane.position.x = 0;
+				plane.position.y = -22;
+				plane.position.z = 0;
+				
+				plane.receiveShadow = true;
+				scene.add(plane);
+				
+				flowerGroup = GenerateFlower3DObject();
+				
+				scene.add(flowerGroup);
+				
+				//add particle box
+				var vertexPointColors = false;
+				var particleColors = 0xc964e0;
+				particleCloud = createParticlesCloud(systemRNG,2, true, 0.6, vertexPointColors, true,particleColors);
+				scene.add(particleCloud);
+				
+				<!-- setting up the camera -->
+				camera.position.x = -30;
+				camera.position.y = 15;
+				camera.position.z = 30;
+				
+				controls.update();
+				
+				var renderScene = new THREE.RenderPass( scene, camera );
+				
+				window.addEventListener('resize', onResize, false);
+				<!-- start the game loop -->
+				gameLoop();
+			};
+			
+			var step = 0;
+			<!-- update loop -->
+			function update()
+			{
+				step += 0.01;
+
+                particleCloud.rotation.x = step;
+                particleCloud.rotation.z = step;
+				
+				controls.update();
+				swipeControls.update();
+			}
+			
+			
+			var clock = new THREE.Clock();
+			<!-- render loop -->
+			function render()
+			{
+				var delta = clock.getDelta();
+				//renderer.render(scene, camera);
+				renderer.clear();
+				composer.render(delta);
+			}
+			
+			
+			<!-- main loop -->
+			function gameLoop()
+			{
+				requestAnimationFrame(gameLoop);
+				update();
+				render();
+			}
+
+			<!-- window load init -->
+			window.onload = init;
+			
+			
+			
+			
+		</script>
+		
+		
+	</body>
+	
+	
+
+</html>
