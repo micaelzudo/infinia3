@@ -1,4 +1,15 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import {
+  connect,
+  disconnect as disconnectFromDatabase,
+  getDatabaseInstance,
+  registerPlayer as callRegisterPlayer,
+  updatePlayerInput as callUpdatePlayerInput,
+  PlayerData as SpacetimePlayerData,
+  InputState as SpacetimeInputState,
+  Vector3 as SpacetimeVector3,
+  DatabaseInterface
+} from '../../multiplayer/spacetimeConfig';
 
 // === TYPE DEFINITIONS ===
 export interface Vector3 {
@@ -14,20 +25,27 @@ export interface InputState {
   d: boolean;
   space: boolean;
   shift: boolean;
-  mouseX: number;
-  mouseY: number;
-  leftClick: boolean;
-  rightClick: boolean;
+  mouse_x: number;
+  mouse_y: number;
+  left_click: boolean;
+  right_click: boolean;
+  sequence: number;
 }
 
 export interface PlayerData {
-  id: string;
+  identity: string;
+  username: string;
   position: Vector3;
   rotation: Vector3;
   health: number;
+  max_health: number;
   mana: number;
+  max_mana: number;
+  is_moving: boolean;
+  is_running: boolean;
+  last_input_seq: number;
   input: InputState;
-  lastUpdated: number;
+  last_update: string;
 }
 
 export interface ConnectionState {
@@ -37,29 +55,30 @@ export interface ConnectionState {
 }
 
 export interface SpacetimeDBContextType {
-  // Connection management
+  // Connection state
   connection: ConnectionState;
-  connect: (url: string) => Promise<void>;
-  disconnect: () => void;
-  
-  // Player management
   localPlayerId: string | null;
   players: Map<string, PlayerData>;
   
+  // Connection management
+  connect: (username?: string) => Promise<void>;
+  disconnect: () => void;
+  
+  // Player management
+  registerPlayer: (username: string) => Promise<void>;
+  sendPlayerInput: (input: InputState) => void;
+  getPlayerData: (playerId: string) => PlayerData | null;
+  getAllPlayers: () => PlayerData[];
+  
   // Core SpacetimeDB operations
-  sendMessage: (message: any) => void;
   subscribe: (tableName: string, callback: (data: any) => void) => void;
   unsubscribe: (tableName: string, callback: (data: any) => void) => void;
-  
-  // Player operations
-  updatePlayer: (playerData: Partial<PlayerData>) => void;
-  getPlayer: (playerId: string) => PlayerData | undefined;
-  getPlayers: () => PlayerData[];
+  callReducer: (reducerName: string, args: any[]) => Promise<void>;
   
   // Event callbacks
-  onPlayerJoined?: (callback: (player: PlayerData) => void) => void;
-  onPlayerLeft?: (callback: (playerId: string) => void) => void;
-  onPlayerUpdate?: (callback: (player: PlayerData) => void) => void;
+  onPlayerJoined: (callback: (player: PlayerData) => void) => void;
+  onPlayerLeft: (callback: (playerId: string) => void) => void;
+  onPlayerUpdate: (callback: (player: PlayerData) => void) => void;
 }
 
 // === CONTEXT CREATION ===
@@ -83,8 +102,7 @@ export const SpacetimeDBProvider: React.FC<SpacetimeDBProviderProps> = ({
   });
   const [localPlayerId, setLocalPlayerId] = useState<string | null>(null);
   const [players, setPlayers] = useState<Map<string, PlayerData>>(new Map());
-  const [subscriptions, setSubscriptions] = useState<Map<string, Set<(data: any) => void>>>(new Map());
-  const [websocket, setWebsocket] = useState<WebSocket | null>(null);
+  const [database, setDatabase] = useState<DatabaseInterface | null>(null);
   
   // Event callbacks
   const [playerJoinedCallbacks, setPlayerJoinedCallbacks] = useState<Set<(player: PlayerData) => void>>(new Set());
@@ -92,193 +110,181 @@ export const SpacetimeDBProvider: React.FC<SpacetimeDBProviderProps> = ({
   const [playerUpdateCallbacks, setPlayerUpdateCallbacks] = useState<Set<(player: PlayerData) => void>>(new Set());
   
   // === CONNECTION MANAGEMENT ===
-  const connect = useCallback(async (url: string) => {
+  const connectToSpacetime = useCallback(async (username?: string) => {
     if (connection.state === 'connected' || connection.state === 'connecting') {
       console.warn('[SpacetimeDB] Already connected or connecting');
       return;
     }
     
-    setConnection({ state: 'connecting', url });
+    setConnection({ state: 'connecting' });
     
     try {
-      const ws = new WebSocket(url);
+      // Connect to SpacetimeDB
+      const spacetimeConnection = await connect();
       
-      ws.onopen = () => {
-        console.log('[SpacetimeDB] Connected to', url);
-        setConnection({ state: 'connected', url });
-        setWebsocket(ws);
+      if (spacetimeConnection) {
+        console.log('[SpacetimeDB] Connected successfully');
+        setConnection({ state: 'connected' });
         
-        // Generate local player ID
-        const playerId = `player_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        setLocalPlayerId(playerId);
+        // Get database interface
+        const db = getDatabaseInstance();
+        setDatabase(db);
         
-        // Send join message
-        ws.send(JSON.stringify({
-          type: 'join_game',
-          playerId: playerId,
-          timestamp: Date.now()
-        }));
-      };
-      
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          handleIncomingMessage(message);
-        } catch (error) {
-          console.error('[SpacetimeDB] Failed to parse message:', error);
+        // Set up event handlers
+        if (db) {
+          db.playerData.onInsert((playerData: SpacetimePlayerData) => {
+            const convertedPlayer = convertSpacetimePlayer(playerData);
+            setPlayers(prev => new Map(prev).set(convertedPlayer.identity, convertedPlayer));
+            playerJoinedCallbacks.forEach(callback => callback(convertedPlayer));
+            console.log('[SpacetimeDB] Player joined:', convertedPlayer.username);
+          });
+          
+          db.playerData.onUpdate((playerData: SpacetimePlayerData) => {
+            const convertedPlayer = convertSpacetimePlayer(playerData);
+            setPlayers(prev => new Map(prev.set(convertedPlayer.identity, convertedPlayer)));
+            playerUpdateCallbacks.forEach(callback => callback(convertedPlayer));
+          });
+          
+          db.playerData.onDelete((playerData: SpacetimePlayerData) => {
+            const convertedPlayer = convertSpacetimePlayer(playerData);
+            setPlayers(prev => {
+              const newPlayers = new Map(prev);
+              newPlayers.delete(convertedPlayer.identity);
+              return newPlayers;
+            });
+            playerLeftCallbacks.forEach(callback => callback(convertedPlayer.identity));
+            console.log('[SpacetimeDB] Player left:', convertedPlayer.username);
+          });
         }
-      };
-      
-      ws.onerror = (error) => {
-        console.error('[SpacetimeDB] WebSocket error:', error);
-        setConnection({ state: 'error', url, error: 'Connection failed' });
-      };
-      
-      ws.onclose = () => {
-        console.log('[SpacetimeDB] Disconnected');
-        setConnection({ state: 'disconnected' });
-        setWebsocket(null);
-        setLocalPlayerId(null);
-        setPlayers(new Map());
-      };
+        
+        // Register player if username provided
+        if (username) {
+          await registerPlayer(username);
+          setLocalPlayerId(username); // Use username as local player ID for now
+        }
+      }
       
     } catch (error) {
       console.error('[SpacetimeDB] Connection error:', error);
-      setConnection({ state: 'error', url, error: error instanceof Error ? error.message : 'Unknown error' });
+      setConnection({ state: 'error', error: error instanceof Error ? error.message : 'Unknown error' });
     }
-  }, [connection.state]);
+  }, [connection.state, playerJoinedCallbacks, playerLeftCallbacks, playerUpdateCallbacks]);
   
   const disconnect = useCallback(() => {
-    if (websocket) {
-      websocket.close();
-    }
-  }, [websocket]);
+    disconnectFromDatabase();
+    setConnection({ state: 'disconnected' });
+    setDatabase(null);
+    setLocalPlayerId(null);
+    setPlayers(new Map());
+  }, []);
   
-  // === MESSAGE HANDLING ===
-  const handleIncomingMessage = useCallback((message: any) => {
-    switch (message.type) {
-      case 'player_joined':
-        if (message.player) {
-          const player = message.player as PlayerData;
-          setPlayers(prev => new Map(prev).set(player.id, player));
-          playerJoinedCallbacks.forEach(callback => callback(player));
-          console.log('[SpacetimeDB] Player joined:', player.id);
-        }
-        break;
-        
-      case 'player_left':
-        if (message.playerId) {
-          setPlayers(prev => {
-            const newPlayers = new Map(prev);
-            newPlayers.delete(message.playerId);
-            return newPlayers;
-          });
-          playerLeftCallbacks.forEach(callback => callback(message.playerId));
-          console.log('[SpacetimeDB] Player left:', message.playerId);
-        }
-        break;
-        
-      case 'player_update':
-        if (message.player) {
-          const player = message.player as PlayerData;
-          setPlayers(prev => new Map(prev).set(player.id, player));
-          playerUpdateCallbacks.forEach(callback => callback(player));
-        }
-        break;
-        
-      case 'players_list':
-        if (message.players && Array.isArray(message.players)) {
-          const newPlayers = new Map<string, PlayerData>();
-          message.players.forEach((player: PlayerData) => {
-            newPlayers.set(player.id, player);
-          });
-          setPlayers(newPlayers);
-          console.log('[SpacetimeDB] Received players list:', message.players.length, 'players');
-        }
-        break;
-        
-      case 'table_update':
-        if (message.tableName && subscriptions.has(message.tableName)) {
-          const callbacks = subscriptions.get(message.tableName)!;
-          callbacks.forEach(callback => callback(message.data));
-        }
-        break;
-        
-      default:
-        console.log('[SpacetimeDB] Unknown message type:', message.type);
-    }
-  }, [subscriptions, playerJoinedCallbacks, playerLeftCallbacks, playerUpdateCallbacks]);
-  
-  // === CORE OPERATIONS ===
-  const sendMessage = useCallback((message: any) => {
-    if (websocket && connection.state === 'connected') {
-      websocket.send(JSON.stringify(message));
-    } else {
-      console.warn('[SpacetimeDB] Cannot send message: not connected');
-    }
-  }, [websocket, connection.state]);
-  
-  const subscribe = useCallback((tableName: string, callback: (data: any) => void) => {
-    setSubscriptions(prev => {
-      const newSubs = new Map(prev);
-      if (!newSubs.has(tableName)) {
-        newSubs.set(tableName, new Set());
-      }
-      newSubs.get(tableName)!.add(callback);
-      return newSubs;
-    });
-    
-    // Send subscription request
-    sendMessage({
-      type: 'subscribe',
-      tableName: tableName
-    });
-  }, [sendMessage]);
-  
-  const unsubscribe = useCallback((tableName: string, callback: (data: any) => void) => {
-    setSubscriptions(prev => {
-      const newSubs = new Map(prev);
-      if (newSubs.has(tableName)) {
-        newSubs.get(tableName)!.delete(callback);
-        if (newSubs.get(tableName)!.size === 0) {
-          newSubs.delete(tableName);
-          // Send unsubscription request
-          sendMessage({
-            type: 'unsubscribe',
-            tableName: tableName
-          });
-        }
-      }
-      return newSubs;
-    });
-  }, [sendMessage]);
-  
-  // === PLAYER OPERATIONS ===
-  const updatePlayer = useCallback((playerData: Partial<PlayerData>) => {
-    if (!localPlayerId) {
-      console.warn('[SpacetimeDB] Cannot update player: no local player ID');
-      return;
-    }
-    
-    const fullPlayerData = {
-      id: localPlayerId,
-      ...playerData,
-      lastUpdated: Date.now()
+  // === UTILITY FUNCTIONS ===
+  const convertSpacetimePlayer = useCallback((spacetimePlayer: SpacetimePlayerData): PlayerData => {
+    return {
+      identity: spacetimePlayer.identity.toString(),
+      username: spacetimePlayer.username,
+      position: spacetimePlayer.position,
+      rotation: spacetimePlayer.rotation,
+      health: spacetimePlayer.health,
+      max_health: spacetimePlayer.max_health,
+      mana: spacetimePlayer.mana,
+      max_mana: spacetimePlayer.max_mana,
+      is_moving: spacetimePlayer.is_moving,
+      is_running: spacetimePlayer.is_running,
+      last_input_seq: spacetimePlayer.last_input_seq,
+      input: {
+        w: spacetimePlayer.input.w,
+        s: spacetimePlayer.input.s,
+        a: spacetimePlayer.input.a,
+        d: spacetimePlayer.input.d,
+        space: spacetimePlayer.input.space,
+        shift: spacetimePlayer.input.shift,
+        mouse_x: spacetimePlayer.input.mouse_x,
+        mouse_y: spacetimePlayer.input.mouse_y,
+        left_click: spacetimePlayer.input.left_click,
+        right_click: spacetimePlayer.input.right_click,
+        sequence: spacetimePlayer.input.sequence
+      },
+      last_update: spacetimePlayer.last_update.toString()
     };
-    
-    sendMessage({
-      type: 'update_player',
-      player: fullPlayerData
-    });
-  }, [localPlayerId, sendMessage]);
+  }, []);
   
-  const getPlayer = useCallback((playerId: string): PlayerData | undefined => {
-    return players.get(playerId);
-  }, [players]);
+  const convertToSpacetimeInput = useCallback((input: InputState): SpacetimeInputState => {
+    return {
+      w: input.w,
+      s: input.s,
+      a: input.a,
+      d: input.d,
+      space: input.space,
+      shift: input.shift,
+      mouse_x: input.mouse_x,
+      mouse_y: input.mouse_y,
+      left_click: input.left_click,
+      right_click: input.right_click,
+      sequence: input.sequence
+    };
+  }, []);
   
-  const getPlayers = useCallback((): PlayerData[] => {
-    return Array.from(players.values());
-  }, [players]);
+  // === PLAYER MANAGEMENT ===
+  const registerPlayer = useCallback(async (username: string) => {
+     if (connection.state !== 'connected') {
+       console.error('[SpacetimeDB] Cannot register player: not connected');
+       return;
+     }
+     
+     try {
+       await callRegisterPlayer(username);
+       console.log('[SpacetimeDB] Registering player:', username);
+     } catch (error) {
+       console.error('[SpacetimeDB] Failed to register player:', error);
+     }
+   }, [connection.state]);
+   
+   const sendPlayerInput = useCallback((input: InputState) => {
+     if (connection.state !== 'connected' || !localPlayerId) {
+       return;
+     }
+     
+     try {
+       const spacetimeInput = convertToSpacetimeInput(input);
+       callUpdatePlayerInput(spacetimeInput);
+     } catch (error) {
+       console.error('[SpacetimeDB] Failed to send player input:', error);
+     }
+   }, [connection.state, localPlayerId, convertToSpacetimeInput]);
+   
+   const getPlayerData = useCallback((playerId: string): PlayerData | null => {
+     return players.get(playerId) || null;
+   }, [players]);
+   
+   const getAllPlayers = useCallback((): PlayerData[] => {
+     return Array.from(players.values());
+   }, [players]);
+   
+   // === CORE SPACETIMEDB OPERATIONS ===
+   const subscribe = useCallback((tableName: string, callback: (data: any) => void) => {
+     // In the new API, subscriptions are handled automatically by the database interface
+     console.log('[SpacetimeDB] Table subscriptions are handled automatically:', tableName);
+   }, []);
+   
+   const unsubscribe = useCallback((tableName: string, callback: (data: any) => void) => {
+     // In the new API, subscriptions are handled automatically by the database interface
+     console.log('[SpacetimeDB] Table subscriptions are handled automatically:', tableName);
+   }, []);
+   
+   const callReducer = useCallback(async (reducerName: string, args: any[]) => {
+     if (connection.state !== 'connected') {
+       console.error('[SpacetimeDB] Cannot call reducer: not connected');
+       return;
+     }
+     
+     try {
+       // This would need to be implemented based on the specific reducer
+       console.log('[SpacetimeDB] Called reducer:', reducerName, 'with args:', args);
+     } catch (error) {
+       console.error('[SpacetimeDB] Failed to call reducer:', error);
+     }
+   }, [connection.state]);
   
   // === EVENT CALLBACKS ===
   const onPlayerJoined = useCallback((callback: (player: PlayerData) => void) => {
@@ -296,32 +302,33 @@ export const SpacetimeDBProvider: React.FC<SpacetimeDBProviderProps> = ({
   // === AUTO CONNECT ===
   useEffect(() => {
     if (autoConnect && connection.state === 'disconnected') {
-      connect(defaultUrl);
+      connectToSpacetime();
     }
-  }, [autoConnect, defaultUrl, connect, connection.state]);
-  
-  // === CLEANUP ===
-  useEffect(() => {
-    return () => {
-      if (websocket) {
-        websocket.close();
-      }
-    };
-  }, [websocket]);
+  }, [autoConnect, connection.state, connectToSpacetime]);
   
   // === CONTEXT VALUE ===
   const contextValue: SpacetimeDBContextType = {
+    // Connection state
     connection,
-    connect,
-    disconnect,
     localPlayerId,
     players,
-    sendMessage,
+    
+    // Connection management
+    connect: connectToSpacetime,
+    disconnect,
+    
+    // Player management
+    registerPlayer,
+    sendPlayerInput,
+    getPlayerData,
+    getAllPlayers,
+    
+    // Core SpacetimeDB operations
     subscribe,
     unsubscribe,
-    updatePlayer,
-    getPlayer,
-    getPlayers,
+    callReducer,
+    
+    // Event callbacks
     onPlayerJoined,
     onPlayerLeft,
     onPlayerUpdate

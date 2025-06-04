@@ -29,7 +29,7 @@ if (!(Get-Command node -ErrorAction SilentlyContinue)) {
 }
 
 # Check for SpacetimeDB
-if (!(Get-Command spacetime -ErrorAction SilentlyContinue)) {
+if (!(Test-Path 'C:\Users\Micael\AppData\Local\SpacetimeDB\spacetime.exe')) {
     Write-Host "❌ SpacetimeDB CLI not found. Please install from https://spacetimedb.com/docs/getting-started/installation"
     exit 1
 } else {
@@ -38,18 +38,19 @@ if (!(Get-Command spacetime -ErrorAction SilentlyContinue)) {
 
 # Install client dependencies
 Write-Host "Installing client dependencies..."
-Set-Location vibe-coding-starter-pack-3d-multiplayer-main/client
+Set-Location ../client
 npm install
 
 # Build server
 Write-Host "Building server..."
 Set-Location ../server
-spacetime build
-
-# Generate TypeScript bindings
-Write-Host "Generating TypeScript bindings..."
-spacetime generate --lang typescript --out-dir ../client/src/generated
+C:\Users\Micael\AppData\Local\SpacetimeDB\spacetime.exe build
+  
+  # Generate TypeScript bindings
+  Write-Host "Generating TypeScript bindings..."
+  # Assuming 'server' is now at d:\infiniagithub\server and 'client' is at d:\infiniagithub\client
+  C:\Users\Micael\AppData\Local\SpacetimeDB\spacetime.exe generate --lang typescript --out-dir ../client/src/generated
 
 Write-Host "Setup complete! You can now start the server and client:"
-Write-Host "1. In one terminal: cd server && spacetime start"
-Write-Host "2. In another terminal: cd client && npm run dev" 
+Write-Host "1. In one terminal: cd server && C:\Users\Micael\AppData\Local\SpacetimeDB\spacetime.exe start"
+Write-Host "2. In another terminal: cd client && npm run dev"

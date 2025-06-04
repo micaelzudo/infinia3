@@ -9,13 +9,13 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon';
 
 // Character components
-import { CharacterManager } from '../entities/characters/core/characterManager';
-import { CharacterInputHandler } from '../entities/characters/core/characterInput';
-import type { CharacterBase, EnhancedCharacter } from '../entities/characters/core/characterTypes';
-import { CharacterInitializer } from '../entities/characters/core/characterInitializer';
+import { CharacterManager } from '../entities/characters/core';
+import { CharacterInputHandler } from '../entities/characters/core';
+import type { CharacterBase, EnhancedCharacter } from '../entities/characters/core';
+import { CharacterInitializer } from '../entities/characters/core';
 
 // State management
-import { createCharacterStates } from '../entities/characters/states/sketchbookStates';
+import { createCharacterStates } from '../entities/characters/states/characterStates';
 
 // Core components
 import { PhysicsManager } from '../core/physics/physicsManager';
@@ -77,4 +77,4 @@ export function initializeCharacter(
     if (character.setState) {
         character.setState('Idle');
     }
-} 
+}

@@ -137,6 +137,42 @@ function createMultiplayerPanel(): HTMLElement {
     chatSection.appendChild(chatInput);
     contentArea.appendChild(chatSection);
 
+    // Isolated Third Person Character Section
+    const characterSection = document.createElement('div');
+    characterSection.style.marginTop = '15px';
+    characterSection.style.paddingTop = '15px';
+    characterSection.style.borderTop = '1px solid #444';
+    
+    const characterTitle = document.createElement('h3');
+    characterTitle.textContent = 'Character Controls';
+    characterTitle.style.fontSize = '16px';
+    characterTitle.style.color = '#bbb';
+    characterTitle.style.marginBottom = '8px';
+    characterSection.appendChild(characterTitle);
+    
+    const spawnCharacterButton = document.createElement('button');
+    spawnCharacterButton.textContent = 'Spawn Isolated Third Person Character';
+    spawnCharacterButton.style.width = '100%';
+    spawnCharacterButton.style.marginBottom = '8px';
+    styleButton(spawnCharacterButton);
+    spawnCharacterButton.onclick = () => {
+        console.log('Spawn Isolated Third Person Character button clicked');
+        // Import and call the isolated third person function
+        import('../../../../src/utils/isolatedThirdPerson_copy').then(module => {
+            if (module.initIsolatedThirdPersonView) {
+                console.log('Initializing isolated third person view...');
+                module.initIsolatedThirdPersonView();
+            } else {
+                console.error('initIsolatedThirdPersonView function not found in isolatedThirdPerson_copy module');
+            }
+        }).catch(error => {
+            console.error('Failed to load isolatedThirdPerson_copy module:', error);
+        });
+    };
+    characterSection.appendChild(spawnCharacterButton);
+    
+    contentArea.appendChild(characterSection);
+
     panel.appendChild(contentArea);
 
     return panel;

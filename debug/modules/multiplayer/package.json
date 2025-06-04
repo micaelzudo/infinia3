@@ -1,0 +1,46 @@
+{
+  "name": "@infinia/multiplayer",
+  "version": "1.0.0",
+  "description": "SpacetimeDB multiplayer module for Infinia game",
+  "main": "index.ts",
+  "types": "index.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "spacetimedb",
+    "multiplayer",
+    "game",
+    "infinia",
+    "typescript"
+  ],
+  "author": "Infinia Team",
+  "license": "MIT",
+  "dependencies": {
+    "@clockworklabs/spacetimedb-sdk": "^0.11.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  },
+  "peerDependencies": {
+    "typescript": ">=4.5.0"
+  },
+  "files": [
+    "index.ts",
+    "spacetimeConfig.ts",
+    "playerState.ts",
+    "networkEvents.ts",
+    "generated/**/*",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/infinia/debug"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

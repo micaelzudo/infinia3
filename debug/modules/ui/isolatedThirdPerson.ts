@@ -24,7 +24,8 @@ import { initIsolatedWorkerPool, terminateIsolatedWorkerPool, requestChunkGeomet
 import { addStandardChunkBoundaries, removeStandardChunkBoundaries } from './standardBoundaryVisualizer';
 
 // SpacetimeDB multiplayer imports
-import type { Vector3 as SpacetimeVector3, InputState as SpacetimeInputState } from '../../vibe-coding-starter-pack-3d-multiplayer-main/server/src/multiplayer/types';
+import type { Vector3 as SpacetimeVector3, InputState as SpacetimeInputState } from '../multiplayer/SpacetimeDBContext';
+import { useInfiniaMultiplayer, type InfiniaPlayerData } from '../multiplayer/InfiniaMultiplayerIntegration';
 
 // Potentially your existing movement/collision system if you adapt Character.ts
 import { 
@@ -202,10 +203,10 @@ interface TPWorkerResultObject { // Similar to isolatedFirstPerson's WorkerResul
 
 // --- Multiplayer State Variables ---
 let multiplayerEnabled = false;
-let spacetimeDBContext: any = null; // Will hold SpacetimeDB context when available
+let infiniaMultiplayerAPI: any = null; // Will hold Infinia Multiplayer API when available
 let localPlayerId: string | null = null;
 let lastPlayerUpdateTime = 0;
-const PLAYER_UPDATE_INTERVAL = 1000 / 30; // 30 FPS update rate
+const PLAYER_UPDATE_INTERVAL = 1000 / 20; // 20 FPS update rate for better performance
 let remotePlayerMeshes: Map<string, THREE.Mesh> = new Map(); // Visual representations of other players
 let lastSentPosition: THREE.Vector3 | null = null;
 let lastSentRotation: THREE.Vector3 | null = null;
@@ -246,7 +247,7 @@ export interface InitIsolatedThirdPersonParams {
     
     // --- Multiplayer Parameters ---
     enableMultiplayer?: boolean;
-    spacetimeDBContext?: any; // SpacetimeDB context for multiplayer
+    infiniaMultiplayerAPI?: any; // Infinia Multiplayer API for multiplayer
     playerId?: string; // Local player ID
 }
 
@@ -275,20 +276,30 @@ export function initIsolatedThirdPerson(params: InitIsolatedThirdPersonParams) {
 
     // --- Initialize multiplayer if enabled ---
     multiplayerEnabled = params.enableMultiplayer || false;
-    spacetimeDBContext = params.spacetimeDBContext || null;
+    infiniaMultiplayerAPI = params.infiniaMultiplayerAPI || (window as any).infiniaMultiplayer || null;
     localPlayerId = params.playerId || null;
     lastPlayerUpdateTime = 0;
     lastSentPosition = null;
     lastSentRotation = null;
     
-    if (multiplayerEnabled && spacetimeDBContext) {
+    if (multiplayerEnabled && infiniaMultiplayerAPI) {
         console.log("[TP Init] Multiplayer enabled with player ID:", localPlayerId);
         // Initialize remote player tracking
         remotePlayerMeshes.clear();
         // Set up player update listeners
         setupMultiplayerListeners();
     } else {
-        console.log("[TP Init] Multiplayer disabled or no SpacetimeDB context provided");
+        console.log("[TP Init] Multiplayer disabled or no Infinia Multiplayer API available");
+        // Try to get API from global scope if not provided
+        if (multiplayerEnabled && !infiniaMultiplayerAPI) {
+            setTimeout(() => {
+                infiniaMultiplayerAPI = (window as any).infiniaMultiplayer;
+                if (infiniaMultiplayerAPI) {
+                    console.log("[TP Init] Found Infinia Multiplayer API on retry");
+                    setupMultiplayerListeners();
+                }
+            }, 1000);
+        }
     }
 
     if (!rendererRef || !sceneRef) {
@@ -1143,17 +1154,39 @@ function generateTPLocalMesh(cx: number, cy: number, cz: number) {
 
 // --- Multiplayer Functions ---
 function setupMultiplayerListeners() {
-    if (!spacetimeDBContext) return;
+    if (!infiniaMultiplayerAPI) return;
     
     console.log("[TP Multiplayer] Setting up multiplayer listeners");
     
-    // Listen for other players' updates
-    // This would typically be handled by the SpacetimeDB context
-    // The context should call updateRemotePlayer when receiving player updates
+    // Set up periodic check for remote players
+    const checkRemotePlayers = () => {
+        if (!infiniaMultiplayerAPI || !isActive) return;
+        
+        const remotePlayers = infiniaMultiplayerAPI.getRemotePlayers?.() || [];
+        
+        // Update existing remote players
+        remotePlayers.forEach((player: InfiniaPlayerData) => {
+            updateRemotePlayer(player.identity, player);
+        });
+        
+        // Remove players that are no longer in the list
+        const currentPlayerIds = new Set(remotePlayers.map((p: InfiniaPlayerData) => p.identity));
+        for (const [playerId] of remotePlayerMeshes) {
+            if (!currentPlayerIds.has(playerId)) {
+                removeRemotePlayer(playerId);
+            }
+        }
+    };
+    
+    // Check for remote players every 100ms
+    const remotePlayerInterval = setInterval(checkRemotePlayers, 100);
+    
+    // Store interval for cleanup
+    (window as any).tpRemotePlayerInterval = remotePlayerInterval;
 }
 
 function handleMultiplayerSync(delta: number) {
-    if (!multiplayerEnabled || !spacetimeDBContext || !characterRef || !localPlayerId) return;
+    if (!multiplayerEnabled || !infiniaMultiplayerAPI || !characterRef) return;
     
     const currentTime = Date.now();
     
@@ -1163,12 +1196,11 @@ function handleMultiplayerSync(delta: number) {
         lastPlayerUpdateTime = currentTime;
     }
     
-    // Update remote players (this would be called by the SpacetimeDB context)
-    updateRemotePlayers();
+    // Remote players are handled by the setupMultiplayerListeners interval
 }
 
 function sendPlayerUpdate() {
-    if (!characterRef || !spacetimeDBContext || !localPlayerId) return;
+    if (!characterRef || !infiniaMultiplayerAPI) return;
     
     const position = characterRef.position as THREE.Vector3;
     const rotation = characterRef.rotation as THREE.Euler;
@@ -1181,37 +1213,30 @@ function sendPlayerUpdate() {
         Math.abs(rotation.z - (lastSentRotation.z || 0)) > ROTATION_THRESHOLD;
     
     if (positionChanged || rotationChanged) {
-        const playerUpdate = {
-            type: 'player_update' as const,
-            playerId: localPlayerId,
-            position: { x: position.x, y: position.y, z: position.z },
-            rotation: { x: rotation.x, y: rotation.y, z: rotation.z },
-            health: 100, // Default values
-            mana: 100,
-            input: {
-                w: characterRef.actions['down']?.isPressed || false,
-                s: characterRef.actions['up']?.isPressed || false,
-                a: characterRef.actions['left']?.isPressed || false,
-                d: characterRef.actions['right']?.isPressed || false,
-                space: characterRef.actions['jump']?.isPressed || false,
-                shift: characterRef.actions['run']?.isPressed || false,
-                mouseX: 0,
-                mouseY: 0,
-                leftClick: false,
-                rightClick: false
-            }
+        // Get current input state from character
+        const inputState = {
+            w: characterRef.actions['down']?.isPressed || false,
+            s: characterRef.actions['up']?.isPressed || false,
+            a: characterRef.actions['left']?.isPressed || false,
+            d: characterRef.actions['right']?.isPressed || false,
+            space: characterRef.actions['jump']?.isPressed || false,
+            shift: characterRef.actions['run']?.isPressed || false,
+            mouseX: 0, // TODO: Get actual mouse movement
+            mouseY: 0,
+            leftClick: false, // TODO: Get actual mouse state
+            rightClick: false
         };
         
-        // Send through SpacetimeDB context
-        if (spacetimeDBContext.sendMessage) {
-            spacetimeDBContext.sendMessage(playerUpdate);
+        // Send through Infinia Multiplayer API
+        if (infiniaMultiplayerAPI.sendPlayerInput) {
+            infiniaMultiplayerAPI.sendPlayerInput(inputState);
         }
         
         // Update last sent values
         lastSentPosition = position.clone();
         lastSentRotation = new THREE.Vector3(rotation.x, rotation.y, rotation.z);
         
-        console.log("[TP Multiplayer] Sent player update:", playerUpdate);
+        console.log("[TP Multiplayer] Sent player input:", inputState);
     }
 }
 
@@ -1226,28 +1251,56 @@ function updateRemotePlayers() {
     // when processing incoming player_update messages
 }
 
-function updateRemotePlayer(playerId: string, playerData: any) {
-    if (!sceneRef || playerId === localPlayerId) return;
+function updateRemotePlayer(playerId: string, playerData: InfiniaPlayerData) {
+    if (!sceneRef || playerId === localPlayerId || playerId === infiniaMultiplayerAPI?.localPlayer?.identity) return;
     
     let playerMesh = remotePlayerMeshes.get(playerId);
     
     if (!playerMesh) {
         // Create a simple representation for remote players
-        const geometry = new THREE.BoxGeometry(1, 2, 1);
-        const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        const geometry = new THREE.BoxGeometry(0.8, 1.8, 0.8);
+        const material = new THREE.MeshBasicMaterial({ 
+            color: 0x00ff00,
+            transparent: true,
+            opacity: 0.8
+        });
         playerMesh = new THREE.Mesh(geometry, material);
         playerMesh.name = `remote_player_${playerId}`;
+        
+        // Add a name label
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d')!;
+        canvas.width = 256;
+        canvas.height = 64;
+        context.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.fillStyle = 'white';
+        context.font = '24px Arial';
+        context.textAlign = 'center';
+        context.fillText(playerData.username || playerId.slice(0, 8), canvas.width / 2, 40);
+        
+        const texture = new THREE.CanvasTexture(canvas);
+        const labelMaterial = new THREE.SpriteMaterial({ map: texture });
+        const label = new THREE.Sprite(labelMaterial);
+        label.position.set(0, 1.2, 0);
+        label.scale.set(2, 0.5, 1);
+        playerMesh.add(label);
+        
         sceneRef.add(playerMesh);
         remotePlayerMeshes.set(playerId, playerMesh);
-        console.log("[TP Multiplayer] Created remote player mesh for:", playerId);
+        console.log("[TP Multiplayer] Created remote player mesh for:", playerData.username || playerId);
     }
     
-    // Update position and rotation
+    // Update position and rotation with smooth interpolation
     if (playerData.position) {
-        playerMesh.position.set(playerData.position.x, playerData.position.y, playerData.position.z);
+        const targetPosition = new THREE.Vector3(playerData.position.x, playerData.position.y, playerData.position.z);
+        playerMesh.position.lerp(targetPosition, 0.1); // Smooth interpolation
     }
     if (playerData.rotation) {
-        playerMesh.rotation.set(playerData.rotation.x, playerData.rotation.y, playerData.rotation.z);
+        const targetRotation = new THREE.Euler(playerData.rotation.x, playerData.rotation.y, playerData.rotation.z);
+        playerMesh.rotation.x = THREE.MathUtils.lerp(playerMesh.rotation.x, targetRotation.x, 0.1);
+        playerMesh.rotation.y = THREE.MathUtils.lerp(playerMesh.rotation.y, targetRotation.y, 0.1);
+        playerMesh.rotation.z = THREE.MathUtils.lerp(playerMesh.rotation.z, targetRotation.z, 0.1);
     }
 }
 

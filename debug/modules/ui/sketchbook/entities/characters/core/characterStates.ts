@@ -20,7 +20,7 @@ import {
     Drive,
     ExitVehicle,
     Sit
-} from '../states/sketchbookStates';
+} from '../states/characterStates';
 
 // State class mapping
 export const STATE_CLASSES: { [key: string]: new (character: EnhancedCharacter) => CharacterStateBase } = {
@@ -159,4 +159,4 @@ export function initializeCharacterStates(character: EnhancedCharacter): void {
 
     // Set initial state
     transitionToState(character, 'idle');
-} 
+}

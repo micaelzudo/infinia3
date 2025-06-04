@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import type { EnhancedCharacter } from './characterTypes';
 
 // Core components
-import { InputManager } from '../../../input/inputManager';
+import { InputManager } from '../../../core/input/inputTypes';
 
 export class CharacterInputHandler {
     private character: EnhancedCharacter;
@@ -134,4 +134,4 @@ export class CharacterInputHandler {
         return input.moveForward || input.moveBackward || 
                input.moveLeft || input.moveRight;
     }
-} 
+}

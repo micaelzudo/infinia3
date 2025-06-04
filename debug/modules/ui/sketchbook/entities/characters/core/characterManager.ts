@@ -12,7 +12,7 @@ import type { EnhancedCharacter } from './characterTypes';
 
 // Core components
 import { PhysicsManager } from '../../../core/physics/physicsManager';
-import { InputManager, InputState } from '../../../input/inputManager';
+import { InputManager, InputState } from '../../../core/input/inputTypes';
 
 // Character components
 import { initializeCharacterPhysics, updateCharacterPhysics } from './characterPhysics';
@@ -110,4 +110,4 @@ export class CharacterManager {
             this.character.enterVehicle?.(this.character.currentVehicle);
         }
     }
-} 
+}

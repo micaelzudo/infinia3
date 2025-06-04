@@ -30,35 +30,34 @@ interface CharacterReference {
 
 // === SPACETIMEDB MANAGER CLASS ===
 export class SpacetimeDBManager {
-  private context: SpacetimeDBContextType | null = null;
   private scene: THREE.Scene;
-  private characterRef: CharacterReference;
+  private onRemotePlayerUpdate: (playerId: string, playerData: any) => void;
+  private onRemotePlayerRemove: (playerId: string) => void;
   
   // Remote player management
   private remotePlayerMeshes = new Map<string, RemotePlayerMesh>();
   
   // Update timing
   private lastUpdateTime = 0;
-  private lastSentPosition: THREE.Vector3 | null = null;
-  private lastSentRotation: THREE.Vector3 | null = null;
   
   // State
   private isEnabled = false;
-  private isConnected = false;
   
-  constructor(scene: THREE.Scene, characterRef: CharacterReference) {
-    this.scene = scene;
-    this.characterRef = characterRef;
+  constructor(config: {
+    scene: THREE.Scene;
+    onRemotePlayerUpdate: (playerId: string, playerData: any) => void;
+    onRemotePlayerRemove: (playerId: string) => void;
+  }) {
+    this.scene = config.scene;
+    this.onRemotePlayerUpdate = config.onRemotePlayerUpdate;
+    this.onRemotePlayerRemove = config.onRemotePlayerRemove;
+    this.isEnabled = true;
   }
   
   // === INITIALIZATION ===
-  public initialize(context: SpacetimeDBContextType): boolean {
+  public initialize(): boolean {
     try {
-      this.context = context;
-      this.setupEventListeners();
       this.isEnabled = true;
-      this.isConnected = context.connection.state === 'connected';
-      
       console.log('[SpacetimeDBManager] Initialized successfully');
       return true;
     } catch (error) {
@@ -67,105 +66,52 @@ export class SpacetimeDBManager {
     }
   }
   
-  // === EVENT LISTENERS ===
-  private setupEventListeners(): void {
-    if (!this.context) return;
+  // === PLAYER UPDATE HANDLING ===
+  public handlePlayerUpdate(playerData: any): void {
+    if (!playerData || !playerData.id) return;
     
-    // Listen for player events
-    this.context.onPlayerJoined?.((player: PlayerData) => {
-      this.handlePlayerJoined(player);
-    });
+    // Delegate to the callback function
+    this.onRemotePlayerUpdate(playerData.id, playerData);
+  }
+  
+  public handlePlayerRemove(playerId: string): void {
+    if (!playerId) return;
     
-    this.context.onPlayerLeft?.((playerId: string) => {
-      this.handlePlayerLeft(playerId);
-    });
+    // Delegate to the callback function
+    this.onRemotePlayerRemove(playerId);
     
-    this.context.onPlayerUpdate?.((player: PlayerData) => {
-      this.handlePlayerUpdate(player);
-    });
-    
-    // Subscribe to players table
-    this.context.subscribe('players', (players: PlayerData[]) => {
-      this.handlePlayersUpdate(players);
-    });
-    
-    console.log('[SpacetimeDBManager] Event listeners set up');
+    // Clean up local tracking
+    this.removeRemotePlayerMesh(playerId);
   }
   
   // === MAIN UPDATE LOOP ===
   public update(deltaTime: number): void {
-    if (!this.isEnabled || !this.context || !this.isConnected) return;
-    
-    const currentTime = Date.now();
-    
-    // Send player updates at regular intervals
-    if (currentTime - this.lastUpdateTime >= CONFIG.UPDATE_INTERVAL) {
-      this.sendPlayerUpdate();
-      this.lastUpdateTime = currentTime;
-    }
+    if (!this.isEnabled) return;
     
     // Update remote player interpolation
     this.updateRemotePlayerInterpolation(deltaTime);
   }
   
-  // === PLAYER UPDATE SENDING ===
-  private sendPlayerUpdate(): void {
-    if (!this.context?.localPlayerId || !this.characterRef) return;
-    
-    const position = this.characterRef.position;
-    const rotation = this.characterRef.rotation;
-    
-    // Check if position or rotation changed significantly
-    const positionChanged = !this.lastSentPosition || 
-      position.distanceTo(this.lastSentPosition) > CONFIG.POSITION_THRESHOLD;
-    
-    const rotationChanged = !this.lastSentRotation || 
-      Math.abs(rotation.x - this.lastSentRotation.x) > CONFIG.ROTATION_THRESHOLD ||
-      Math.abs(rotation.y - this.lastSentRotation.y) > CONFIG.ROTATION_THRESHOLD ||
-      Math.abs(rotation.z - this.lastSentRotation.z) > CONFIG.ROTATION_THRESHOLD;
-    
-    if (positionChanged || rotationChanged) {
-      const playerData: Partial<PlayerData> = {
-        position: { x: position.x, y: position.y, z: position.z },
-        rotation: { x: rotation.x, y: rotation.y, z: rotation.z },
-        health: 100, // TODO: Get from character state
-        mana: 100,   // TODO: Get from character state
-        input: this.getCurrentInputState()
-      };
-      
-      this.context.updatePlayer(playerData);
-      
-      // Update last sent values
-      this.lastSentPosition = position.clone();
-      this.lastSentRotation = new THREE.Vector3(rotation.x, rotation.y, rotation.z);
-      
-      console.log('[SpacetimeDBManager] Sent player update');
+  // === CLEANUP ===
+  public cleanup(): void {
+    // Remove all remote player meshes
+    for (const [playerId] of this.remotePlayerMeshes) {
+      this.removeRemotePlayerMesh(playerId);
     }
+    this.remotePlayerMeshes.clear();
+    this.isEnabled = false;
+    console.log('[SpacetimeDBManager] Cleaned up');
   }
   
-  // === INPUT STATE CAPTURE ===
-  private getCurrentInputState(): InputState {
-    if (!this.characterRef.actions) {
-      return {
-        w: false, s: false, a: false, d: false,
-        space: false, shift: false,
-        mouseX: 0, mouseY: 0,
-        leftClick: false, rightClick: false
-      };
+  // === REMOTE PLAYER MESH MANAGEMENT ===
+  private removeRemotePlayerMesh(playerId: string): void {
+    const remotePlayer = this.remotePlayerMeshes.get(playerId);
+    if (remotePlayer) {
+      this.scene.remove(remotePlayer.mesh);
+      this.scene.remove(remotePlayer.nameTag);
+      this.remotePlayerMeshes.delete(playerId);
+      console.log('[SpacetimeDBManager] Removed remote player mesh:', playerId);
     }
-    
-    return {
-      w: this.characterRef.actions['up']?.isPressed || false,
-      s: this.characterRef.actions['down']?.isPressed || false,
-      a: this.characterRef.actions['left']?.isPressed || false,
-      d: this.characterRef.actions['right']?.isPressed || false,
-      space: this.characterRef.actions['jump']?.isPressed || false,
-      shift: this.characterRef.actions['run']?.isPressed || false,
-      mouseX: 0, // TODO: Get from input manager
-      mouseY: 0, // TODO: Get from input manager
-      leftClick: false, // TODO: Get from input manager
-      rightClick: false // TODO: Get from input manager
-    };
   }
   
   // === INCOMING PLAYER DATA HANDLING ===

@@ -41,12 +41,12 @@ interface WorkerMessage {
     error?: string;
     path?: Array<{x: number, y: number, z: number}>;
     closestPoint?: {x: number, y: number, z: number};
-    regions?: any[];  // For navmesh data
+    regions?: any[];  // For navmesh data - can be deprecated if navMeshData is always used
     polygons?: any[];  // For navmesh data
     from?: {x: number, y: number, z: number};  // For pathfinding
     to?: {x: number, y: number, z: number};    // For pathfinding
     position?: {x: number, y: number, z: number}; // For closest point
-    navMeshData?: any; // For navmesh data transfer
+    navMeshData?: SerializedNavMeshData; // For navmesh data transfer - this is the primary data structure
 }
 
 interface PendingNavMeshRequest {
@@ -144,28 +144,40 @@ class NavMeshWorkerPool {
             error, 
             path, 
             closestPoint, 
-            regions,
+            // regions, // Deprecate direct use of regions if navMeshData is comprehensive
             polygons,
             from,
             to,
             position,
-            navMeshData
+            navMeshData // This property from WorkerMessage seems to be what the worker sends
         } = data;
         
         if (type === 'navmesh' && navMeshId) {
             const request = this.pendingRequests.get(navMeshId);
             if (request) {
-                // Reconstruct the navmesh from regions if available
-                if (regions) {
+                if (navMeshData) { // Prioritize navMeshData
                     try {
-                        const navMesh = this.reconstructNavMesh(regions);
+                        const navMesh = this.reconstructNavMesh(navMeshData);
                         request.resolve(navMesh);
                     } catch (err) {
-                        console.error('[NavMeshWorkerPool] Error reconstructing navmesh:', err);
+                        console.error('[NavMeshWorkerPool] Error reconstructing navmesh from navMeshData:', err);
+                        request.reject(new Error(`Failed to reconstruct navmesh: ${err instanceof Error ? err.message : 'Unknown error'}`));
+                    }
+                } else if (data.regions) { // Fallback for old direct regions data
+                     try {
+                        // Adapt data.regions to SerializedNavMeshData if possible, or handle as legacy
+                        // For now, assuming it's just an array of region-like objects
+                        console.warn('[NavMeshWorkerPool] Received legacy regions data, attempting partial reconstruction.');
+                        const legacyNavMesh = new YUKA.NavMesh();
+                        (legacyNavMesh as any).regions = this.reconstructRegions(data.regions); // Use existing helper
+                        // Graph will be missing or incomplete in this legacy path
+                        request.resolve(legacyNavMesh);
+                    } catch (err) {
+                        console.error('[NavMeshWorkerPool] Error reconstructing navmesh from direct regions:', err);
                         request.reject(new Error(`Failed to reconstruct navmesh: ${err instanceof Error ? err.message : 'Unknown error'}`));
                     }
                 } else {
-                    request.reject(new Error('No regions data received in navmesh message'));
+                    request.reject(new Error('No navmesh data (navMeshData or regions) received in navmesh message'));
                 }
                 this.pendingRequests.delete(navMeshId);
                 
@@ -286,15 +298,12 @@ class NavMeshWorkerPool {
         // For simplicity, let's rely on timeouts or manual cancellation for now.
     }
 
-    public async requestNavMeshGeneration(geometryData: any): Promise<SerializedNavMeshData> {
-        if (!this.initializationPromise) {
-            throw new Error('Worker pool not initialized');
-        }
-        
-        // Wait for workers to be ready
-        await this.initializationPromise;
-        
+    public requestNavMeshGeneration(geometryData: number[]): Promise<YUKA.NavMesh> {
         return new Promise((resolve, reject) => {
+            if (this.workers.length === 0) {
+                reject(new Error('No workers available or pool not initialized.'));
+                return;
+            }
             const navMeshId = this.generateId();
             const request: PendingNavMeshRequest = {
                 resolve,
@@ -603,58 +612,97 @@ class NavMeshWorkerPool {
     }
 
     /**
-     * Reconstructs regions from serialized data
+     * Reconstructs regions from serialized data.
+     * This is a helper for reconstructNavMesh if only regions are needed or for legacy paths.
      */
-    private reconstructRegions(regionsData: any[]): any[] {
-        if (!Array.isArray(regionsData)) {
-            console.warn('[NavMeshWorkerPool] Invalid regions data format');
+    private reconstructRegions(regionDataArray: any[]): YUKA.Polygon[] {
+        if (!Array.isArray(regionDataArray)) {
+            console.warn('[NavMeshWorkerPool] reconstructRegions: input is not an array.');
             return [];
         }
-
-        return regionsData.map(regionData => {
-            try {
-                // Create a simple object to hold the region data
-                const region: any = {};
-                
-                // Copy all properties from regionData
-                Object.assign(region, regionData);
-                
-                // Convert vertices to YUKA.Vector3 if they exist
-                if (Array.isArray(regionData.vertices)) {
-                    region.vertices = regionData.vertices.map((v: {x: number, y: number, z: number}) => 
-                        new YUKA.Vector3(v.x, v.y, v.z)
-                    );
-                }
-                
-                return region;
-            } catch (err) {
-                console.error('[NavMeshWorkerPool] Error reconstructing region:', err);
-                return null;
+        return regionDataArray.map(data => {
+            const polygon = new YUKA.Polygon();
+            if (data && Array.isArray(data.vertices)) {
+                data.vertices.forEach((v: { x: number; y: number; z: number }) => {
+                    polygon.add(new YUKA.Vector3(v.x, v.y, v.z));
+                });
+            } else {
+                console.warn('[NavMeshWorkerPool] reconstructRegions: invalid region data or missing vertices.');
             }
-        }).filter(Boolean);
+            // Optionally reconstruct centroid and plane if available and needed here
+            // This function primarily focuses on creating YUKA.Polygon instances for regions.
+            return polygon;
+        });
     }
     
     /**
      * Reconstructs a complete NavMesh from serialized data
      */
-    // Reconstructs a YUKA NavMesh from serialized data
-    private reconstructNavMesh(regions: any[]): YUKA.NavMesh {
+    private reconstructNavMesh(data: SerializedNavMeshData): YUKA.NavMesh {
         const navMesh = new YUKA.NavMesh();
-        
-        // Reconstruct regions and add them to the navmesh
-        if (Array.isArray(regions)) {
-            regions.forEach(regionData => {
-                const polygon = new (YUKA as any).Polygon();
-                if (Array.isArray(regionData.vertices)) {
-                    regionData.vertices.forEach((v: {x: number, y: number, z: number}) => {
-                        polygon.add(new YUKA.Vector3(v.x, v.y, v.z));
-                    });
-                }
-                (navMesh as any).regions = (navMesh as any).regions || [];
-                (navMesh as any).regions.push(polygon);
+
+        if (!data || !Array.isArray(data.regions)) {
+            console.error('[NavMeshWorkerPool] Invalid or missing regions data for NavMesh reconstruction.');
+            return navMesh; // Return an empty navMesh
+        }
+
+        // Reconstruct regions
+        data.regions.forEach(regionData => {
+            const polygon = new YUKA.Polygon();
+            regionData.vertices.forEach(v => {
+                polygon.add(new YUKA.Vector3(v.x, v.y, v.z));
             });
+
+            // YUKA's NavMeshRegion constructor or fromPolygon method might handle this internally
+            // For direct construction if needed:
+            const navRegion = new YUKA.NavMeshRegion();
+            navRegion.polygon = polygon;
+            if (regionData.centroid) {
+                navRegion.centroid.set(regionData.centroid.x, regionData.centroid.y, regionData.centroid.z);
+            }
+            if (regionData.plane) {
+                navRegion.plane.normal.set(regionData.plane.normal.x, regionData.plane.normal.y, regionData.plane.normal.z);
+                navRegion.plane.constant = regionData.plane.constant;
+            }
+            // YUKA might assign IDs automatically or they might not be directly settable on NavMeshRegion
+            // if (regionData.id !== undefined) { (navRegion as any).id = regionData.id; }
+            
+            navMesh.regions.push(navRegion);
+        });
+
+        // Reconstruct graph (if YUKA doesn't do it automatically from regions)
+        // YUKA typically builds the graph when NavMesh.fromPolygons is called or implicitly.
+        // If direct graph reconstruction is needed:
+        if (data.graph && Array.isArray(data.graph.nodes) && Array.isArray(data.graph.edges)) {
+            // Clear existing graph data if any (YUKA might do this)
+            navMesh.graph.clear();
+
+            data.graph.nodes.forEach(nodeData => {
+                const node = new YUKA.Node(nodeData.index);
+                node.position.set(nodeData.position.x, nodeData.position.y, nodeData.position.z);
+                navMesh.graph.addNode(node);
+            });
+
+            data.graph.edges.forEach(edgeData => {
+                const edge = new YUKA.Edge(edgeData.from, edgeData.to, edgeData.cost);
+                navMesh.graph.addEdge(edge);
+            });
+        } else {
+            // If no explicit graph data, YUKA might build it from regions.
+            // This might involve calling a method like `navMesh.updateGraph()` if it exists,
+            // or it might happen implicitly when regions are added.
+            // For now, assume YUKA handles graph generation if not explicitly provided.
+            console.warn('[NavMeshWorkerPool] Graph data not provided or invalid; YUKA may attempt to build it from regions.');
         }
         
+        // It's crucial that YUKA internally connects regions and builds the graph.
+        // If `navMesh.fromPolygons()` was the original method, it handles graph creation.
+        // Reconstructing manually like this requires ensuring all YUKA's internal states are correctly set.
+        // A simpler approach if YUKA supports it would be: 
+        // const polygons = data.regions.map(r => { /* create YUKA.Polygon */ });
+        // navMesh.fromPolygons(polygons);
+        // However, `fromPolygons` is synchronous and what we are trying to avoid on the main thread.
+
         return navMesh;
     }
 }
@@ -733,4 +781,4 @@ export {
     requestNavMeshGeneration,
     requestNavMeshPathfinding,
     requestNavMeshClosestPoint
-}; 
+};

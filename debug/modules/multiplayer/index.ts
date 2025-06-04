@@ -1,12 +1,20 @@
-// Barrel file for the multiplayer module
+// Infinia Multiplayer Module
+// This module provides SpacetimeDB integration for real-time multiplayer functionality
 
+// Export configuration and connection utilities
 export * from './spacetimeConfig';
-export * from './playerState';
-export * from './networkEvents'; // Though direct SpacetimeDB usage is primary
 
-// You might add more exports here as the module grows, for example:
-// export * from './replicationManager';
-// export * from './lagCompensator';
+// Export generated SpacetimeDB bindings
+export * from './generated';
+
+// Export player state management (legacy - consider migrating to generated types)
+export * from './playerState';
+
+// Export network event definitions (legacy - SpacetimeDB uses table updates instead)
+export * from './networkEvents';
+
+// Note: The generated bindings in ./generated/ should be used for new development.
+// The playerState and networkEvents exports are kept for backward compatibility.
 
 console.log("Multiplayer module loaded.");
 

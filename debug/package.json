@@ -18,7 +18,7 @@
     "vite": "^3.0.0"
   },
   "dependencies": {
-    "@clockworklabs/spacetimedb-sdk": "^0.6.0",
+    "@clockworklabs/spacetimedb-sdk": "^1.1.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
     "@mui/material": "^7.1.0",

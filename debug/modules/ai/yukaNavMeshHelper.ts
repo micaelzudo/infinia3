@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import * as YUKA from 'yuka';
 import { ChunkMeshesRef } from '../ui/playerMovement';
-import { initializeWorkerPool, requestNavMeshPathfinding, requestNavMeshClosestPoint } from '../workers/navMeshWorkerPool';
+import { initializeWorkerPool, requestNavMeshGeneration, requestNavMeshPathfinding, requestNavMeshClosestPoint } from '../workers/navMeshWorkerPool';
 
 // Import YUKA's Vector3, but use type assertion for Polygon and NavMesh
 // since the type definitions may be out of sync with the actual API
@@ -25,7 +25,7 @@ export class YukaNavMeshHelper {
     private debugHelper: THREE.LineSegments | null = null;
     private isDirty: boolean = true;
     private lastUpdateTime: number = 0;
-    private readonly UPDATE_INTERVAL: number = 2000; // Update nav mesh every 2 seconds if needed
+    private readonly UPDATE_INTERVAL: number = 5000; // Update nav mesh every 5 seconds if needed
 
     constructor(private scene: THREE.Scene) {}
 
@@ -53,10 +53,10 @@ export class YukaNavMeshHelper {
             }
 
             const positionAttr = geometry.getAttribute('position');
-            const normalAttr = geometry.getAttribute('normal');
+            // const normalAttr = geometry.getAttribute('normal'); // Original line
 
-            if (!positionAttr || !normalAttr) {
-                console.warn(`[YukaNavMeshHelper] Mesh ${mesh.name} missing position or normal attributes`);
+            if (!positionAttr /* || !normalAttr */) { // Modified line: removed normalAttr check
+                console.warn(`[YukaNavMeshHelper] Mesh ${mesh.name} missing position attributes`); // Modified log message
                 return;
             }
 
@@ -173,60 +173,102 @@ export class YukaNavMeshHelper {
     /**
      * Generate NavMesh from geometry data using worker pool
      * @param geometryData Array of vertex data
-     * @returns Promise resolving to NavMesh
+     * @returns NavMesh instance
      */
-    private async generateNavMeshFromGeometry(geometryData: number[]): Promise<any> {
-        // Initialize worker pool if not already done
-        if (!initializeWorkerPool()) {
-            throw new Error('Failed to initialize NavMesh worker pool');
-        }
-
-        return new Promise((resolve, reject) => {
-            // Use a timeout to prevent hanging
-            const timeout = setTimeout(() => {
-                reject(new Error('NavMesh generation timeout'));
-            }, 10000); // 10 second timeout
-
-            try {
-                // For now, create a basic NavMesh as the worker implementation is complex
-                // This can be enhanced later with actual worker-based generation
-                const navMesh = this.createBasicNavMesh(geometryData);
-                clearTimeout(timeout);
-                resolve(navMesh);
-            } catch (error) {
-                clearTimeout(timeout);
-                reject(error);
+    private async generateNavMeshFromGeometry(geometryData: number[]): Promise<YUKA.NavMesh> {
+        try {
+            console.log('[YukaNavMeshHelper] Generating NavMesh using simplified worker...');
+            
+            // Initialize worker pool if not already done
+            await initializeWorkerPool();
+            
+            // Use the simplified worker with a reasonable timeout
+            const timeoutPromise = new Promise<never>((_, reject) => {
+                setTimeout(() => reject(new Error('Worker timeout after 10 seconds')), 10000);
+            });
+            
+            const navMeshPromise = requestNavMeshGeneration(geometryData);
+            const result = await Promise.race([navMeshPromise, timeoutPromise]);
+            
+            // The simplified worker returns serialized data, we need to reconstruct it
+            if (result && typeof result === 'object') {
+                const navMesh = new YUKA.NavMesh();
+                
+                // If the result has regions data, reconstruct them
+                if ((result as any).regions && Array.isArray((result as any).regions)) {
+                    const regions: YUKA.Polygon[] = [];
+                    
+                    for (const regionData of (result as any).regions) {
+                        if (regionData.vertices && Array.isArray(regionData.vertices)) {
+                            try {
+                                const polygon = new YUKA.Polygon();
+                                const vertices = regionData.vertices.map((v: any) => 
+                                    new YUKA.Vector3(v.x || 0, v.y || 0, v.z || 0)
+                                );
+                                polygon.fromContour(vertices);
+                                regions.push(polygon);
+                            } catch (error) {
+                                console.warn('[YukaNavMeshHelper] Error reconstructing polygon:', error);
+                            }
+                        }
+                    }
+                    
+                    (navMesh as any).regions = regions;
+                    console.log(`[YukaNavMeshHelper] Reconstructed NavMesh with ${regions.length} regions`);
+                } else {
+                    console.warn('[YukaNavMeshHelper] Worker returned invalid data, creating minimal NavMesh');
+                    (navMesh as any).regions = [];
+                }
+                
+                return navMesh;
+            } else {
+                throw new Error('Worker returned invalid result');
             }
-        });
+            
+        } catch (error) {
+            console.warn('[YukaNavMeshHelper] Worker failed, using fallback method:', error);
+            return await this.createBasicNavMesh(geometryData);
+        }
     }
 
     /**
-     * Create a basic NavMesh from geometry data
+     * Create a basic fallback NavMesh when worker pool is not available
      * @param geometryData Array of vertex data
-     * @returns Basic NavMesh
+     * @returns Basic NavMesh with minimal regions
      */
-    private createBasicNavMesh(geometryData: number[]): any {
-        const navMesh = new YUKA.NavMesh();
-        const polygons: any[] = [];
+    private async createBasicNavMesh(geometryData: number[]): Promise<YUKA.NavMesh> {
+        console.log('[YukaNavMeshHelper] Creating fallback NavMesh without worker pool');
         
-        // Process geometry data in groups of 9 (3 vertices * 3 components)
-        for (let i = 0; i < geometryData.length; i += 9) {
+        // Create a minimal NavMesh without using the expensive fromPolygons method
+        const navMesh = new YUKA.NavMesh();
+        
+        // Create simple regions directly without complex processing
+        const regions: YUKA.Polygon[] = [];
+        
+        // Process only a subset of geometry to avoid blocking
+        const maxTriangles = 100; // Limit to prevent blocking
+        const step = Math.max(1, Math.floor(geometryData.length / (9 * maxTriangles)));
+        
+        for (let i = 0; i < geometryData.length && regions.length < maxTriangles; i += 9 * step) {
             if (i + 8 < geometryData.length) {
-                // Create polygon with vertices directly
-                const v1 = new YUKA.Vector3(geometryData[i], geometryData[i + 1], geometryData[i + 2]);
-                const v2 = new YUKA.Vector3(geometryData[i + 3], geometryData[i + 4], geometryData[i + 5]);
-                const v3 = new YUKA.Vector3(geometryData[i + 6], geometryData[i + 7], geometryData[i + 8]);
-                
-                const polygon = new YUKA.Polygon();
-                polygon.vertices = [v1, v2, v3];
-                polygons.push(polygon);
+                try {
+                    const v1 = new YUKA.Vector3(geometryData[i], geometryData[i + 1], geometryData[i + 2]);
+                    const v2 = new YUKA.Vector3(geometryData[i + 3], geometryData[i + 4], geometryData[i + 5]);
+                    const v3 = new YUKA.Vector3(geometryData[i + 6], geometryData[i + 7], geometryData[i + 8]);
+
+                    const polygon = new YUKA.Polygon();
+                    polygon.fromContour([v1, v2, v3]);
+                    regions.push(polygon);
+                } catch (error) {
+                    console.warn('[YukaNavMeshHelper] Error creating polygon, skipping:', error);
+                }
             }
         }
         
-        // Use fromPolygons to properly initialize the NavMesh
-        navMesh.fromPolygons(polygons);
+        // Directly assign regions without using fromPolygons
+        (navMesh as any).regions = regions;
         
-        console.log(`[YukaNavMeshHelper] Created basic NavMesh with ${navMesh.regions.length} regions`);
+        console.log(`[YukaNavMeshHelper] Created fallback NavMesh with ${regions.length} regions`);
         return navMesh;
     }
 

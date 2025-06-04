@@ -1,73 +1,65 @@
 // SpacetimeDB Configuration
-import { DbConnection } from '@clockworklabs/spacetimedb-sdk';
+import { Identity, ConnectionId } from '@clockworklabs/spacetimedb-sdk';
+import { DbConnection, connectToDatabase, getConnection, getDatabase, disconnect } from './generated/connection';
+import { DatabaseInterface } from './generated/tables';
+import { registerPlayer, updatePlayerInput, storeTerrainChunk, getTerrainChunk, storeInitialChunksForPlanet } from './generated/reducers';
+import { PlayerData, LoggedOutPlayerData, Vector3, InputState, GameTickSchedule, TerrainChunk } from './generated/types';
 
-// Replace with your actual SpacetimeDB server URL and database name
-const SPACETIMEDB_URL = "ws://localhost:3000"; // Or your remote server URL
-const DATABASE_NAME = "your_database_name"; // The name of your SpacetimeDB database
-const MODULE_NAME = "your_module_name"; // The name of your SpacetimeDB module
+// SpacetimeDB configuration
+export const SPACETIMEDB_URL = 'ws://localhost:3000';
+export const DATABASE_NAME = 'infinia-multiplayer';
+export const MODULE_NAME = 'infinia-multiplayer';
 
-let dbConnection: DbConnection | null = null;
-
-export const getSpacetimeDBInstance = (): DbConnection | null => {
-    return dbConnection;
+// Re-export types
+export type {
+    PlayerData,
+    LoggedOutPlayerData,
+    Vector3,
+    InputState,
+    GameTickSchedule,
+    TerrainChunk,
+    DatabaseInterface
 };
 
-export const connectToSpacetimeDB = async (identity?: string, token?: string): Promise<DbConnection> => {
-    if (dbConnection && dbConnection.status() === 'connected') {
-        console.log("Already connected to SpacetimeDB.");
-        return dbConnection;
-    }
-
-    console.log(`Attempting to connect to SpacetimeDB at ${SPACETIMEDB_URL}, DB: ${DATABASE_NAME}, Module: ${MODULE_NAME}`);
-
-    const builder = DbConnection.builder()
-        .address(SPACETIMEDB_URL)
-        .dbName(DATABASE_NAME)
-        .moduleName(MODULE_NAME);
-
-    if (identity && token) {
-        builder.identity(identity, token);
-        console.log("Connecting with identity.");
-    } else {
-        console.log("Connecting anonymously.");
-    }
-
-    dbConnection = builder.build();
-
-    return new Promise((resolve, reject) => {
-        if (!dbConnection) {
-            reject(new Error("Failed to build DbConnection."));
-            return;
-        }
-        dbConnection.onConnect(() => {
-            console.log("Successfully connected to SpacetimeDB!");
-            // You might want to register reducers and subscribe to tables here
-            // e.g., registerPlayerStateReducers(dbConnection);
-            //       subscribeToPlayerStateTable(dbConnection);
-            resolve(dbConnection!);
-        });
-
-        dbConnection.onDisconnect((reason) => {
-            console.warn(`Disconnected from SpacetimeDB: ${reason}`);
-            // Optionally, attempt to reconnect or notify the user
-        });
-
-        dbConnection.onError((error) => {
-            console.error("SpacetimeDB connection error:", error);
-            reject(error);
-        });
-
-        dbConnection.connect();
-    });
+// Re-export reducer functions
+export {
+    registerPlayer,
+    updatePlayerInput,
+    storeTerrainChunk,
+    getTerrainChunk,
+    storeInitialChunksForPlanet
 };
 
-export const disconnectFromSpacetimeDB = () => {
-    if (dbConnection) {
-        dbConnection.disconnect();
-        dbConnection = null;
-        console.log("Disconnected from SpacetimeDB.");
+// Connection management functions
+export function getConnectionInstance() {
+    return getConnection();
+}
+
+export function getDatabaseInstance() {
+    return getDatabase();
+}
+
+export async function connect(identity?: string, token?: string) {
+    try {
+        const connection = await connectToDatabase(
+            SPACETIMEDB_URL,
+            DATABASE_NAME,
+            MODULE_NAME,
+            identity,
+            token
+        );
+        console.log('Connected to SpacetimeDB successfully');
+        return connection;
+    } catch (error) {
+        console.error('Failed to connect to SpacetimeDB:', error);
+        throw error;
     }
-};
+}
+
+export function disconnectFromDatabase() {
+    disconnect();
+    console.log('Disconnected from SpacetimeDB');
+}
 
 // Placeholder for registering reducers - you'll generate these with the SpacetimeDB CLI
 // export const registerPlayerStateReducers = (connection: DbConnection) => {
