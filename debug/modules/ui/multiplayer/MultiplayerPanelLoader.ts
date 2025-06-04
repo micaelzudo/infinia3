@@ -1,6 +1,33 @@
 // d:\InfiniaFULL\MARCHINGCUBES\MARCHINGCUBES13\debug\modules\ui\multiplayer\MultiplayerPanelLoader.ts
 
+import * as THREE from 'three';
+import { appendToCustomLog } from '../customLogger';
+import { createRenderer, createScene, createCamera } from '../../core/setup';
+
+// Create logToFile function using appendToCustomLog
+function logToFile(message: string, type: string = 'info') {
+    appendToCustomLog(message, type);
+}
+
 let multiplayerPanel: HTMLElement | null = null;
+
+function styleButton(button: HTMLButtonElement, primary = false) {
+    button.style.padding = '8px 15px';
+    button.style.border = '1px solid #61dafb';
+    button.style.borderRadius = '4px';
+    button.style.backgroundColor = 'transparent';
+    button.style.color = '#61dafb';
+    button.style.cursor = 'pointer';
+    button.style.transition = 'background-color 0.2s, color 0.2s';
+    button.onmouseover = () => {
+        button.style.backgroundColor = '#61dafb';
+        button.style.color = '#282c34';
+    };
+    button.onmouseout = () => {
+        button.style.backgroundColor = 'transparent';
+        button.style.color = '#61dafb';
+    };
+}
 
 function createMultiplayerPanel(): HTMLElement {
     const panel = document.createElement('div');
@@ -155,13 +182,39 @@ function createMultiplayerPanel(): HTMLElement {
     spawnCharacterButton.style.width = '100%';
     spawnCharacterButton.style.marginBottom = '8px';
     styleButton(spawnCharacterButton);
-    spawnCharacterButton.onclick = () => {
+    spawnCharacterButton.onclick = async () => {
         console.log('Spawn Isolated Third Person Character button clicked');
         // Import and call the isolated third person function
-        import('../../../../src/utils/isolatedThirdPerson_copy').then(module => {
+        import('../isolatedThirdPerson_copy').then(async module => {
             if (module.initIsolatedThirdPersonView) {
                 console.log('Initializing isolated third person view...');
-                module.initIsolatedThirdPersonView();
+                try {
+                    // Create THREE.js objects if they don't exist on window
+                    let scene = (window as any).scene;
+                    let camera = (window as any).camera;
+                    let renderer = (window as any).renderer;
+                    
+                    if (!scene) {
+                        scene = createScene();
+                        (window as any).scene = scene;
+                    }
+                    if (!camera) {
+                        camera = createCamera();
+                        (window as any).camera = camera;
+                    }
+                    if (!renderer) {
+                        renderer = createRenderer();
+                        (window as any).renderer = renderer;
+                    }
+                    
+                    // Import and call enterThirdPersonMode to set the camera mode flag
+                    const { enterThirdPersonMode } = await import('../isolatedTerrainViewer/index');
+                    enterThirdPersonMode();
+                    
+                    await module.initIsolatedThirdPersonView(scene, camera, renderer);
+                } catch (initError) {
+                    console.error('Error initializing THREE.js objects:', initError);
+                }
             } else {
                 console.error('initIsolatedThirdPersonView function not found in isolatedThirdPerson_copy module');
             }
@@ -178,23 +231,7 @@ function createMultiplayerPanel(): HTMLElement {
     return panel;
 }
 
-function styleButton(button: HTMLButtonElement) {
-    button.style.padding = '8px 15px';
-    button.style.border = '1px solid #61dafb';
-    button.style.borderRadius = '4px';
-    button.style.backgroundColor = 'transparent';
-    button.style.color = '#61dafb';
-    button.style.cursor = 'pointer';
-    button.style.transition = 'background-color 0.2s, color 0.2s';
-    button.onmouseover = () => {
-        button.style.backgroundColor = '#61dafb';
-        button.style.color = '#282c34';
-    };
-    button.onmouseout = () => {
-        button.style.backgroundColor = 'transparent';
-        button.style.color = '#61dafb';
-    };
-}
+
 
 function toggleMultiplayerPanelVisibility() {
     if (!multiplayerPanel) {

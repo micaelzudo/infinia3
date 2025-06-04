@@ -1,392 +1,414 @@
-import { State } from 'yuka';
+import { State, Vector3 as YukaVector3 } from 'yuka';
 import { IsolatedYukaCharacter } from './isolatedYukaCharacter';
-import { Vector3 } from 'yuka';
-import * as THREE from 'three';
 
-// Base state class for AI states
-export class AIState extends State<IsolatedYukaCharacter> {
-    protected readonly name: string;
-
-    constructor(name: string) {
-        super();
-        this.name = name;
-    }
-
-    getName(): string {
-        return this.name;
-    }
+/**
+ * Base AI State interface
+ */
+export interface AIState extends State<IsolatedYukaCharacter> {
+    enter(character: IsolatedYukaCharacter): void;
+    execute(character: IsolatedYukaCharacter): void;
+    exit(character: IsolatedYukaCharacter): void;
 }
 
-// Enhanced Idle state with perception awareness
-export class IdleState extends AIState {
-    private lookAroundTimer: number = 0;
-    private readonly LOOK_AROUND_INTERVAL: number = 2.0; // seconds
-    private readonly IDLE_DURATION: number = 4.0; // seconds before switching to patrol
-    private readonly ALERT_CHECK_INTERVAL: number = 0.5; // seconds
-    private idleTimer: number = 0;
-    private alertCheckTimer: number = 0;
-
-    constructor() {
-        super('Idle');
-    }
-
+/**
+ * Enhanced Idle State with automatic exploration
+ */
+export class IdleState extends State<IsolatedYukaCharacter> {
+    private idleStartTime: number = 0;
+    private maxIdleTime: number = 3000; // 3 seconds before starting exploration
+    
     enter(character: IsolatedYukaCharacter): void {
-        console.log(`[AIState] ${character.name} entering Idle state`);
-        // Don't clear all steering - keep obstacle avoidance
-        character.steering.behaviors.forEach(behavior => {
-            if (behavior.constructor.name !== 'ObstacleAvoidanceBehavior') {
-                character.steering.remove(behavior);
-            }
-        });
-        this.lookAroundTimer = 0;
-        this.idleTimer = 0;
-        this.alertCheckTimer = 0;
+        console.log(`[IdleState] ${character.name} entering idle state`);
+        character.stopMovement();
+        this.idleStartTime = Date.now();
     }
-
+    
     execute(character: IsolatedYukaCharacter): void {
-        const deltaTime = character.yukaTime.getDelta();
+        const currentTime = Date.now();
+        const idleDuration = currentTime - this.idleStartTime;
         
-        this.lookAroundTimer += deltaTime;
-        this.idleTimer += deltaTime;
-        this.alertCheckTimer += deltaTime;
+        // Check for threats or interesting entities
+        const visibleEntities = character.getVisibleEntities();
+        const alertLevel = character.getAlertLevel();
         
-        // Check for player visibility more frequently
-        if (this.alertCheckTimer >= this.ALERT_CHECK_INTERVAL) {
-            const visibleEntities = character.getVisibleEntities();
-            const playerVisible = Array.from(visibleEntities).find(entity => !entity.isUnderAIControl());
-            
-            if (playerVisible) {
-                const chaseState = new ChaseState();
-                chaseState.setTargetEntity(playerVisible);
-                character.stateMachine.changeState(chaseState);
+        // If we see threats, switch to appropriate state
+        if (alertLevel > 1.5) {
+            // High alert - flee or fight
+            if (visibleEntities.size > 0) {
+                const threat = Array.from(visibleEntities)[0];
+                character.stateMachine.changeTo(new FleeState(threat));
                 return;
             }
-            
-            // Check alert level - if suspicious, start investigating
-            const alertLevel = character.getAlertLevel();
-            if (alertLevel > 0.3) {
-                const lastKnownPos = character.getLastKnownPlayerPosition();
-                if (lastKnownPos) {
-                    // Move towards last known position
-                    character.moveTo(new THREE.Vector3(lastKnownPos.x, lastKnownPos.y, lastKnownPos.z));
-                    // Don't change state immediately - investigate from idle
-                }
+        } else if (alertLevel > 0.8) {
+            // Medium alert - investigate
+            const lastKnownPosition = character.getLastKnownPlayerPosition();
+            if (lastKnownPosition) {
+                character.stateMachine.changeTo(new InvestigateState(lastKnownPosition));
+                return;
             }
-            
-            this.alertCheckTimer = 0;
         }
         
-        // Occasionally look around (more frequent if alert)
-        const alertLevel = character.getAlertLevel();
-        const lookInterval = this.LOOK_AROUND_INTERVAL * (1.0 - alertLevel * 0.5); // Faster looking when alert
-        
-        if (this.lookAroundTimer >= lookInterval) {
-            this.lookAround(character, alertLevel > 0.2);
-            this.lookAroundTimer = 0;
+        // Occasional look around behavior
+        if (Math.random() < 0.01) { // 1% chance per frame
+            this.lookAround(character);
         }
         
-        // Switch to patrol after idle duration (shorter if alert)
-        const idleDuration = this.IDLE_DURATION * (1.0 - alertLevel * 0.3);
-        if (this.idleTimer >= idleDuration) {
-            character.stateMachine.changeState(new PatrolState());
-        }
-    }
-
-    exit(character: IsolatedYukaCharacter): void {
-        console.log(`[AIState] ${character.name} exiting Idle state`);
-    }
-
-    private lookAround(character: IsolatedYukaCharacter, isAlert: boolean = false): void {
-        // Generate a random direction to look at
-        let angle: number;
-        
-        if (isAlert) {
-            // When alert, look towards last known player position or random
-            const lastKnownPos = character.getLastKnownPlayerPosition();
-            if (lastKnownPos) {
-                const dirToLastKnown = new Vector3(
-                    lastKnownPos.x - character.position.x,
-                    0,
-                    lastKnownPos.z - character.position.z
-                ).normalize();
-                angle = Math.atan2(dirToLastKnown.z, dirToLastKnown.x) + (Math.random() - 0.5) * Math.PI * 0.5;
-            } else {
-                angle = Math.random() * Math.PI * 2;
-            }
-        } else {
-            angle = Math.random() * Math.PI * 2;
-        }
-        
-        const lookDirection = new Vector3(
-            Math.cos(angle),
-            0,
-            Math.sin(angle)
-        );
-        
-        // Rotate character to look in that direction
-        character.rotation.setFromUnitVectors(
-            new Vector3(0, 0, 1), // forward direction
-            lookDirection
-        );
-    }
-}
-
-// Enhanced Patrol state with perception awareness
-export class PatrolState extends AIState {
-    private patrolPoints: THREE.Vector3[] = [];
-    private currentPatrolIndex: number = 0;
-    private readonly PATROL_RADIUS: number = 10;
-    private readonly PATROL_POINTS: number = 4;
-    private investigationTimer: number = 0;
-
-    constructor() {
-        super('Patrol');
-    }
-
-    enter(character: IsolatedYukaCharacter): void {
-        console.log(`[AIState] ${character.name} entering Patrol state`);
-        this.generatePatrolPoints(character);
-        this.moveToNextPoint(character);
-        this.investigationTimer = 0;
-    }
-
-    execute(character: IsolatedYukaCharacter): void {
-        // Check for player visibility - switch to chase if spotted
-        const visibleEntities = character.getVisibleEntities();
-        const playerVisible = Array.from(visibleEntities).find(entity => !entity.isUnderAIControl());
-        
-        if (playerVisible) {
-            const chaseState = new ChaseState();
-            chaseState.setTarget(new THREE.Vector3(playerVisible.position.x, playerVisible.position.y, playerVisible.position.z));
-            character.stateMachine.changeState(chaseState);
+        // If idle too long and not in combat, start exploring
+        if (idleDuration > this.maxIdleTime && alertLevel < 0.5) {
+            console.log(`[IdleState] ${character.name} idle too long, starting exploration`);
+            character.stateMachine.changeTo(new ExploreState());
             return;
         }
         
-        // Check alert level - if suspicious, investigate last known position
-        if (character.getAlertLevel() > 0.5) {
-            const lastKnownPos = character.getLastKnownPlayerPosition();
-            if (lastKnownPos && this.investigationTimer <= 0) {
-                character.moveTo(new THREE.Vector3(lastKnownPos.x, lastKnownPos.y, lastKnownPos.z));
-                this.investigationTimer = 5.0; // Investigate for 5 seconds
-                return;
-            }
-            this.investigationTimer -= character.yukaTime.getDelta();
-        }
-        
-        // Normal patrol behavior
-        const currentPoint = this.patrolPoints[this.currentPatrolIndex];
-        const distance = character.position.distanceTo(new Vector3(currentPoint.x, currentPoint.y, currentPoint.z));
-        
-        if (distance < 1.5) { // Within 1.5 units of the target
-            this.currentPatrolIndex = (this.currentPatrolIndex + 1) % this.patrolPoints.length;
-            this.moveToNextPoint(character);
+        // Random chance to start patrolling
+        if (idleDuration > this.maxIdleTime * 0.5 && Math.random() < 0.1) {
+            console.log(`[IdleState] ${character.name} randomly starting patrol`);
+            character.stateMachine.changeTo(new PatrolState());
         }
     }
-
+    
+    private lookAround(character: IsolatedYukaCharacter): void {
+        // Generate a random direction to look at
+        const randomAngle = Math.random() * Math.PI * 2;
+        const lookDirection = new YukaVector3(
+            Math.cos(randomAngle),
+            0,
+            Math.sin(randomAngle)
+        );
+        
+        // Use Yuka's rotation system instead of THREE.js
+        character.rotateTo(lookDirection, 0.1); // Smooth rotation over time
+    }
+    
     exit(character: IsolatedYukaCharacter): void {
-        console.log(`[AIState] ${character.name} exiting Patrol state`);
-        // Don't clear all steering - keep obstacle avoidance
+        console.log(`[IdleState] ${character.name} exiting idle state`);
     }
+}
 
+/**
+ * Enhanced Patrol State with NavMesh pathfinding
+ */
+export class PatrolState extends State<IsolatedYukaCharacter> {
+    private patrolPoints: YukaVector3[] = [];
+    private currentPatrolIndex: number = 0;
+    private arrivalThreshold: number = 2.0;
+    private lastPatrolTime: number = 0;
+    private patrolTimeout: number = 15000; // 15 seconds timeout per patrol point
+    private useNavMesh: boolean = true;
+    
+    enter(character: IsolatedYukaCharacter): void {
+        console.log(`[PatrolState] ${character.name} entering patrol state`);
+        this.generatePatrolPoints(character);
+        this.moveToNextPatrolPoint(character);
+        this.lastPatrolTime = Date.now();
+    }
+    
+    execute(character: IsolatedYukaCharacter): void {
+        const currentTime = Date.now();
+        
+        // Check for threats
+        const visibleEntities = character.getVisibleEntities();
+        const alertLevel = character.getAlertLevel();
+        
+        if (alertLevel > 1.5 && visibleEntities.size > 0) {
+            const threat = Array.from(visibleEntities)[0];
+            character.stateMachine.changeTo(new ChaseState(threat));
+            return;
+        }
+        
+        // Check if we've reached the current patrol point
+        if (this.patrolPoints.length > 0) {
+            const targetPoint = this.patrolPoints[this.currentPatrolIndex];
+            const distance = character.position.distanceTo(targetPoint);
+            
+            // If we've reached the patrol point or timed out, move to next
+            if (distance < this.arrivalThreshold || (currentTime - this.lastPatrolTime) > this.patrolTimeout) {
+                this.currentPatrolIndex = (this.currentPatrolIndex + 1) % this.patrolPoints.length;
+                this.moveToNextPatrolPoint(character);
+                this.lastPatrolTime = currentTime;
+                
+                // Brief pause at patrol point
+                setTimeout(() => {
+                    if (character.stateMachine.currentState === this) {
+                        this.moveToNextPatrolPoint(character);
+                    }
+                }, 1000 + Math.random() * 2000); // 1-3 second pause
+            }
+        }
+        
+        // Random chance to switch to exploration
+        if (Math.random() < 0.005) { // 0.5% chance per frame
+            character.stateMachine.changeTo(new ExploreState());
+        }
+    }
+    
+    exit(character: IsolatedYukaCharacter): void {
+        console.log(`[PatrolState] ${character.name} exiting patrol state`);
+    }
+    
     private generatePatrolPoints(character: IsolatedYukaCharacter): void {
         this.patrolPoints = [];
-        const center = character.position;
+        const numPoints = 4 + Math.floor(Math.random() * 4); // 4-7 patrol points
+        const radius = 15 + Math.random() * 10; // 15-25 unit radius
         
-        for (let i = 0; i < this.PATROL_POINTS; i++) {
-            const angle = (i / this.PATROL_POINTS) * Math.PI * 2;
-            const x = center.x + Math.cos(angle) * this.PATROL_RADIUS;
-            const z = center.z + Math.sin(angle) * this.PATROL_RADIUS;
-            this.patrolPoints.push(new THREE.Vector3(x, center.y, z));
+        for (let i = 0; i < numPoints; i++) {
+            const angle = (i / numPoints) * Math.PI * 2;
+            const x = character.position.x + Math.cos(angle) * radius;
+            const z = character.position.z + Math.sin(angle) * radius;
+            const y = character.position.y; // Keep same height for now
+            
+            this.patrolPoints.push(new YukaVector3(x, y, z));
         }
+        
+        console.log(`[PatrolState] ${character.name} generated ${this.patrolPoints.length} patrol points`);
     }
-
-    private moveToNextPoint(character: IsolatedYukaCharacter): void {
+    
+    private moveToNextPatrolPoint(character: IsolatedYukaCharacter): void {
+        if (this.patrolPoints.length === 0) return;
+        
         const targetPoint = this.patrolPoints[this.currentPatrolIndex];
-        character.moveTo(targetPoint);
+        
+        // Try NavMesh pathfinding first
+        if (this.useNavMesh) {
+            character.startNavMeshPatrol();
+        } else {
+            // Fallback to direct movement
+            const targetPosition = new THREE.Vector3(targetPoint.x, targetPoint.y, targetPoint.z);
+            character.moveTo(targetPosition);
+        }
+        
+        console.log(`[PatrolState] ${character.name} moving to patrol point ${this.currentPatrolIndex + 1}/${this.patrolPoints.length}`);
     }
 }
 
-// Enhanced Chase state with dynamic target tracking
-export class ChaseState extends AIState {
-    private target: THREE.Vector3 | null = null;
-    private readonly CHASE_SPEED: number = 2.5;
-    private readonly GIVE_UP_DISTANCE: number = 25.0;
-    private readonly GIVE_UP_TIME: number = 15.0; // seconds
-    private readonly LOST_SIGHT_TIME: number = 3.0; // seconds before using last known position
+/**
+ * New Explore State with NavMesh-based exploration
+ */
+export class ExploreState extends State<IsolatedYukaCharacter> {
+    private explorationStartTime: number = 0;
+    private maxExplorationTime: number = 30000; // 30 seconds of exploration
+    private lastTargetTime: number = 0;
+    private targetChangeInterval: number = 8000; // Change target every 8 seconds
+    
+    enter(character: IsolatedYukaCharacter): void {
+        console.log(`[ExploreState] ${character.name} entering exploration state`);
+        this.explorationStartTime = Date.now();
+        this.lastTargetTime = Date.now();
+        character.startNavMeshExploration();
+    }
+    
+    execute(character: IsolatedYukaCharacter): void {
+        const currentTime = Date.now();
+        const explorationDuration = currentTime - this.explorationStartTime;
+        
+        // Check for threats
+        const visibleEntities = character.getVisibleEntities();
+        const alertLevel = character.getAlertLevel();
+        
+        if (alertLevel > 1.5 && visibleEntities.size > 0) {
+            const threat = Array.from(visibleEntities)[0];
+            character.stateMachine.changeTo(new ChaseState(threat));
+            return;
+        }
+        
+        if (alertLevel > 0.8) {
+            const lastKnownPosition = character.getLastKnownPlayerPosition();
+            if (lastKnownPosition) {
+                character.stateMachine.changeTo(new InvestigateState(lastKnownPosition));
+                return;
+            }
+        }
+        
+        // Change exploration target periodically
+        if (currentTime - this.lastTargetTime > this.targetChangeInterval) {
+            character.startNavMeshExploration();
+            this.lastTargetTime = currentTime;
+        }
+        
+        // End exploration after max time
+        if (explorationDuration > this.maxExplorationTime) {
+            // Random choice between idle and patrol
+            if (Math.random() < 0.6) {
+                character.stateMachine.changeTo(new PatrolState());
+            } else {
+                character.stateMachine.changeTo(new IdleState());
+            }
+        }
+    }
+    
+    exit(character: IsolatedYukaCharacter): void {
+        console.log(`[ExploreState] ${character.name} exiting exploration state`);
+    }
+}
+
+/**
+ * Enhanced Chase State
+ */
+export class ChaseState extends State<IsolatedYukaCharacter> {
+    private target: IsolatedYukaCharacter;
+    private lastSeenPosition: YukaVector3;
     private chaseStartTime: number = 0;
-    private lastSeenTime: number = 0;
-    private targetEntity: any = null;
-
-    constructor() {
-        super('Chase');
+    private maxChaseTime: number = 20000; // 20 seconds max chase
+    private lostTargetTime: number = 0;
+    private maxLostTime: number = 5000; // 5 seconds before giving up
+    
+    constructor(target: IsolatedYukaCharacter) {
+        this.target = target;
+        this.lastSeenPosition = target.position.clone();
     }
-
+    
     enter(character: IsolatedYukaCharacter): void {
-        console.log(`[AIState] ${character.name} entering Chase state`);
+        console.log(`[ChaseState] ${character.name} chasing ${this.target.name}`);
         this.chaseStartTime = Date.now();
-        this.lastSeenTime = Date.now();
-        if (this.target) {
-            character.pursue(this.target);
-        }
+        this.lostTargetTime = 0;
+        character.pursue(this.target);
     }
-
+    
     execute(character: IsolatedYukaCharacter): void {
         const currentTime = Date.now();
-        const timeElapsed = (currentTime - this.chaseStartTime) / 1000;
+        const chaseDuration = currentTime - this.chaseStartTime;
         
-        // Check if we can still see the target
+        // Update last seen position if target is visible
         const visibleEntities = character.getVisibleEntities();
-        const playerVisible = Array.from(visibleEntities).find(entity => !entity.isUnderAIControl());
-        
-        if (playerVisible) {
-            // Update target position and last seen time
-            this.target = new THREE.Vector3(playerVisible.position.x, playerVisible.position.y, playerVisible.position.z);
-            this.targetEntity = playerVisible;
-            this.lastSeenTime = currentTime;
-            character.pursue(this.target);
+        if (visibleEntities.has(this.target)) {
+            this.lastSeenPosition = this.target.position.clone();
+            this.lostTargetTime = 0;
+            character.pursue(this.target); // Update pursuit
         } else {
-            // Lost sight of target - use last known position
-            const timeSinceLastSeen = (currentTime - this.lastSeenTime) / 1000;
-            
-            if (timeSinceLastSeen < this.LOST_SIGHT_TIME) {
-                // Still pursuing last known position
-                if (this.target) {
-                    character.pursue(this.target);
-                }
-            } else {
-                // Use memory system's last known position
-                const lastKnownPos = character.getLastKnownPlayerPosition();
-                if (lastKnownPos) {
-                    this.target = new THREE.Vector3(lastKnownPos.x, lastKnownPos.y, lastKnownPos.z);
-                    character.pursue(this.target);
-                }
+            // Target lost, start timer
+            if (this.lostTargetTime === 0) {
+                this.lostTargetTime = currentTime;
             }
+            
+            // Move to last known position
+            const targetPosition = new THREE.Vector3(
+                this.lastSeenPosition.x,
+                this.lastSeenPosition.y,
+                this.lastSeenPosition.z
+            );
+            character.moveTo(targetPosition);
         }
-
-        if (!this.target) {
-            // No target at all, return to patrol
-            character.stateMachine.changeState(new PatrolState());
-            return;
-        }
-
-        const distance = character.position.distanceTo(new Vector3(this.target.x, this.target.y, this.target.z));
-        const timeSinceLastSeen = (currentTime - this.lastSeenTime) / 1000;
-
-        // Give up if target is too far, we've been chasing too long, or lost sight for too long
-        if (distance > this.GIVE_UP_DISTANCE || timeElapsed > this.GIVE_UP_TIME || timeSinceLastSeen > this.GIVE_UP_TIME) {
-            console.log(`[AIState] ${character.name} giving up chase - distance: ${distance.toFixed(1)}, time: ${timeElapsed.toFixed(1)}, lost sight: ${timeSinceLastSeen.toFixed(1)}`);
-            character.stateMachine.changeState(new PatrolState());
-            return;
+        
+        // Give up chase if target lost too long or chase too long
+        if ((this.lostTargetTime > 0 && currentTime - this.lostTargetTime > this.maxLostTime) ||
+            chaseDuration > this.maxChaseTime) {
+            character.stateMachine.changeTo(new InvestigateState(this.lastSeenPosition));
         }
     }
-
+    
     exit(character: IsolatedYukaCharacter): void {
-        console.log(`[AIState] ${character.name} exiting Chase state`);
-        // Don't clear all steering - keep obstacle avoidance
-    }
-
-    setTarget(target: THREE.Vector3): void {
-        this.target = target;
-        this.lastSeenTime = Date.now();
-    }
-
-    setTargetEntity(entity: any): void {
-        this.targetEntity = entity;
-        if (entity) {
-            this.target = new THREE.Vector3(entity.position.x, entity.position.y, entity.position.z);
-            this.lastSeenTime = Date.now();
-        }
+        console.log(`[ChaseState] ${character.name} ending chase`);
     }
 }
 
-// Enhanced Flee state with dynamic threat assessment
-export class FleeState extends AIState {
-    private threat: THREE.Vector3 | null = null;
-    private readonly FLEE_DISTANCE: number = 15.0;
-    private readonly SAFE_DISTANCE: number = 25.0;
-    private readonly PANIC_DISTANCE: number = 5.0;
-    private readonly FLEE_TIME_LIMIT: number = 10.0; // seconds
-    private fleeStartTime: number = 0;
-    private threatEntity: any = null;
-
-    constructor() {
-        super('Flee');
+/**
+ * New Investigate State
+ */
+export class InvestigateState extends State<IsolatedYukaCharacter> {
+    private investigationPoint: YukaVector3;
+    private investigationStartTime: number = 0;
+    private maxInvestigationTime: number = 10000; // 10 seconds
+    private arrivalThreshold: number = 2.0;
+    private hasReachedPoint: boolean = false;
+    
+    constructor(investigationPoint: YukaVector3) {
+        this.investigationPoint = investigationPoint.clone();
     }
-
+    
     enter(character: IsolatedYukaCharacter): void {
-        console.log(`[AIState] ${character.name} entering Flee state`);
-        this.fleeStartTime = Date.now();
-        if (this.threat) {
-            character.fleeFrom(this.threat);
-        }
+        console.log(`[InvestigateState] ${character.name} investigating position`);
+        this.investigationStartTime = Date.now();
+        this.hasReachedPoint = false;
+        
+        const targetPosition = new THREE.Vector3(
+            this.investigationPoint.x,
+            this.investigationPoint.y,
+            this.investigationPoint.z
+        );
+        character.moveTo(targetPosition);
     }
-
+    
     execute(character: IsolatedYukaCharacter): void {
         const currentTime = Date.now();
-        const timeElapsed = (currentTime - this.fleeStartTime) / 1000;
+        const investigationDuration = currentTime - this.investigationStartTime;
         
-        // Check if we can still see the threat
+        // Check for threats
         const visibleEntities = character.getVisibleEntities();
-        const playerVisible = Array.from(visibleEntities).find(entity => !entity.isUnderAIControl());
+        if (visibleEntities.size > 0) {
+            const threat = Array.from(visibleEntities)[0];
+            character.stateMachine.changeTo(new ChaseState(threat));
+            return;
+        }
         
-        if (playerVisible) {
-            // Update threat position
-            this.threat = new THREE.Vector3(playerVisible.position.x, playerVisible.position.y, playerVisible.position.z);
-            this.threatEntity = playerVisible;
-            
-            const distance = character.position.distanceTo(new Vector3(this.threat.x, this.threat.y, this.threat.z));
-            
-            // If very close, increase flee intensity
-            if (distance < this.PANIC_DISTANCE) {
-                character.maxSpeed = 4.0; // Panic speed
-                character.fleeFrom(this.threat);
-            } else if (distance < this.SAFE_DISTANCE) {
-                character.maxSpeed = 3.0; // Normal flee speed
-                character.fleeFrom(this.threat);
-            } else {
-                // We're at safe distance, transition to patrol but stay alert
-                character.maxSpeed = 2.0; // Reset to normal speed
-                character.stateMachine.changeState(new PatrolState());
-                return;
+        // Check if we've reached the investigation point
+        if (!this.hasReachedPoint) {
+            const distance = character.position.distanceTo(this.investigationPoint);
+            if (distance < this.arrivalThreshold) {
+                this.hasReachedPoint = true;
+                character.stopMovement();
+                // Look around for a moment
+                console.log(`[InvestigateState] ${character.name} reached investigation point, looking around`);
             }
-        } else {
-            // Lost sight of threat
-            if (this.threat) {
-                const distance = character.position.distanceTo(new Vector3(this.threat.x, this.threat.y, this.threat.z));
-                if (distance > this.SAFE_DISTANCE || timeElapsed > this.FLEE_TIME_LIMIT) {
-                    // Safe or fled long enough, return to patrol
-                    character.maxSpeed = 2.0; // Reset to normal speed
-                    character.stateMachine.changeState(new PatrolState());
-                    return;
-                } else {
-                    // Continue fleeing from last known position
-                    character.fleeFrom(this.threat);
-                }
+        }
+        
+        // End investigation after max time
+        if (investigationDuration > this.maxInvestigationTime) {
+            // Return to patrol or exploration
+            if (Math.random() < 0.7) {
+                character.stateMachine.changeTo(new PatrolState());
             } else {
-                // No threat information, return to idle
-                character.maxSpeed = 2.0; // Reset to normal speed
-                character.stateMachine.changeState(new IdleState());
-                return;
+                character.stateMachine.changeTo(new ExploreState());
             }
         }
     }
-
+    
     exit(character: IsolatedYukaCharacter): void {
-        console.log(`[AIState] ${character.name} exiting Flee state`);
-        character.maxSpeed = 2.0; // Reset to normal speed
-        // Don't clear all steering - keep obstacle avoidance
+        console.log(`[InvestigateState] ${character.name} ending investigation`);
     }
+}
 
-    setThreat(threat: THREE.Vector3): void {
+/**
+ * Enhanced Flee State
+ */
+export class FleeState extends State<IsolatedYukaCharacter> {
+    private threat: IsolatedYukaCharacter;
+    private fleeStartTime: number = 0;
+    private maxFleeTime: number = 15000; // 15 seconds max flee
+    private safeDistance: number = 20; // Consider safe when this far away
+    
+    constructor(threat: IsolatedYukaCharacter) {
         this.threat = threat;
-        this.fleeStartTime = Date.now();
     }
-
-    setThreatEntity(entity: any): void {
-        this.threatEntity = entity;
-        if (entity) {
-            this.threat = new THREE.Vector3(entity.position.x, entity.position.y, entity.position.z);
-            this.fleeStartTime = Date.now();
+    
+    enter(character: IsolatedYukaCharacter): void {
+        console.log(`[FleeState] ${character.name} fleeing from ${this.threat.name}`);
+        this.fleeStartTime = Date.now();
+        character.fleeFrom(this.threat);
+    }
+    
+    execute(character: IsolatedYukaCharacter): void {
+        const currentTime = Date.now();
+        const fleeDuration = currentTime - this.fleeStartTime;
+        
+        // Check distance to threat
+        const distanceToThreat = character.position.distanceTo(this.threat.position);
+        
+        // If far enough away, stop fleeing
+        if (distanceToThreat > this.safeDistance) {
+            character.stateMachine.changeTo(new IdleState());
+            return;
         }
+        
+        // Update flee behavior
+        character.fleeFrom(this.threat);
+        
+        // Stop fleeing after max time (assume we're safe)
+        if (fleeDuration > this.maxFleeTime) {
+            character.stateMachine.changeTo(new IdleState());
+        }
+    }
+    
+    exit(character: IsolatedYukaCharacter): void {
+        console.log(`[FleeState] ${character.name} ending flee`);
     }
 }

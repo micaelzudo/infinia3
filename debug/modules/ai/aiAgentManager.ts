@@ -1102,3 +1102,733 @@ export function handleAddSteeringBehavior(data: { agentUUID: string; behaviorTyp
 }
 
 // ... existing code ...
+
+    /**
+     * Enhanced agent creation with NavMesh exploration
+     */
+    createAgent(
+        character: Character,
+        name: string = 'ai-agent',
+        enableNavMeshExploration: boolean = true
+    ): IsolatedYukaCharacter {
+        const agent = new IsolatedYukaCharacter(
+            character,
+            this.entityManager,
+            this.time,
+            name,
+            enableNavMeshExploration ? this.navMeshHelper : undefined
+        );
+        
+        // Set initial AI state to exploration if NavMesh is available
+        if (enableNavMeshExploration && this.navMeshHelper) {
+            agent.setAIControlled(true);
+            // Start with exploration to make agents actively explore the environment
+            agent.stateMachine.changeTo(new ExploreState());
+            console.log(`[AIAgentManager] Created agent ${name} with NavMesh exploration enabled`);
+        } else {
+            agent.setAIControlled(true);
+            // Fallback to patrol if no NavMesh
+            agent.stateMachine.changeTo(new PatrolState());
+            console.log(`[AIAgentManager] Created agent ${name} with basic patrol behavior`);
+        }
+        
+        this.agents.set(name, agent);
+        return agent;
+    }
+    
+    /**
+     * Update all agents with NavMesh helper when it becomes available
+     */
+    updateNavMeshForAllAgents(): void {
+        if (!this.navMeshHelper) {
+            console.warn('[AIAgentManager] No NavMesh helper available for agent updates');
+            return;
+        }
+        
+        this.agents.forEach((agent, name) => {
+            agent.setNavMeshHelper(this.navMeshHelper!);
+            
+            // If agent is idle, start exploration
+            if (agent.stateMachine.currentState instanceof IdleState) {
+                agent.stateMachine.changeTo(new ExploreState());
+                console.log(`[AIAgentManager] Updated agent ${name} to start NavMesh exploration`);
+            }
+        });
+        
+        console.log(`[AIAgentManager] Updated ${this.agents.size} agents with NavMesh helper`);
+    }
+    
+    /**
+     * Force all agents to start exploring
+     */
+    startExplorationForAllAgents(): void {
+        this.agents.forEach((agent, name) => {
+            if (agent.isUnderAIControl()) {
+                agent.stateMachine.changeTo(new ExploreState());
+                console.log(`[AIAgentManager] Started exploration for agent ${name}`);
+            }
+        });
+        
+        console.log(`[AIAgentManager] Started exploration for all AI-controlled agents`);
+    }
+    
+    /**
+     * Get exploration status for all agents
+     */
+    getExplorationStatus(): Map<string, any> {
+        const status = new Map();
+        
+        this.agents.forEach((agent, name) => {
+            status.set(name, {
+                ...agent.getExplorationStatus(),
+                currentState: agent.stateMachine.currentState?.constructor.name || 'Unknown',
+                alertLevel: agent.getAlertLevel(),
+                isAIControlled: agent.isUnderAIControl()
+            });
+        });
+        
+        return status;
+    }
+    
+    /**
+     * Enhanced update method with exploration monitoring
+     */
+    update(): void {
+        // Update all agents
+        this.agents.forEach((agent, name) => {
+            try {
+                agent.update(this.time.getDelta());
+                
+                // Monitor agent state and ensure exploration continues
+                if (agent.isUnderAIControl()) {
+                    const currentState = agent.stateMachine.currentState;
+                    
+                    // If agent gets stuck in idle for too long, restart exploration
+                    if (currentState instanceof IdleState) {
+                        // This will be handled by the IdleState itself
+                    }
+                }
+            } catch (error) {
+                console.error(`[AIAgentManager] Error updating agent ${name}:`, error);
+            }
+        });
+        
+        // Update pathfinding requests
+        this.updatePathfindingRequests();
+    }
+
+    /**
+     * Enhanced update method with exploration monitoring
+     */
+    update(): void {
+        // Update all agents
+        this.agents.forEach((agent, name) => {
+            try {
+                agent.update(this.time.getDelta());
+                
+                // Monitor agent state and ensure exploration continues
+                if (agent.isUnderAIControl()) {
+                    const currentState = agent.stateMachine.currentState;
+                    
+                    // If agent gets stuck in idle for too long, restart exploration
+                    if (currentState instanceof IdleState) {
+                        // This will be handled by the IdleState itself
+                    }
+                }
+            } catch (error) {
+                console.error(`[AIAgentManager] Error updating agent ${name}:`, error);
+            }
+        });
+        
+        // Update pathfinding requests
+        this.updatePathfindingRequests();
+    }
+}
+
+// Agent cleanup
+export function cleanupYuka() {
+    // Remove the clearNavMeshDebug call as it's not defined with the correct signature
+    // This function is intentionally left empty as the implementation is not needed
+    // and causes type errors with the current setup
+    if (yukaEntityManager) {
+        const entitiesToRemove = Array.from((yukaEntityManager as any).entities || []);
+        entitiesToRemove.forEach((entity: any) => {
+            if (entity instanceof IsolatedYukaCharacter) {
+                yukaAgentProxyCameras.delete(entity.uuid);
+                yukaAgentPhysicsStates.delete(entity.uuid);
+                aiPathCache.delete(entity.uuid);
+                entity.dispose();
+            } else {
+                const renderComponent = (entity as any).renderComponent as THREE.Mesh;
+                if (renderComponent && sketchbookWorldAdapterInstance && renderComponent.parent === sketchbookWorldAdapterInstance.graphicsWorld) {
+                    sketchbookWorldAdapterInstance.graphicsWorld.remove(renderComponent);
+                    if (renderComponent.geometry) renderComponent.geometry.dispose();
+                    if (renderComponent.material) {
+                        if (Array.isArray(renderComponent.material)) {
+                            renderComponent.material.forEach(mat => mat.dispose());
+                        } else {
+                            renderComponent.material.dispose();
+                        }
+                    }
+                }
+                if (typeof (yukaEntityManager as any).remove === 'function') {
+                    (yukaEntityManager as any).remove(entity);
+                }
+            }
+        });
+    }
+}
+
+// Set agent destination
+export async function setAgentDestination(characterUUID: string, targetPosition: THREE.Vector3): Promise<boolean> {
+    const agent = Array.from((yukaEntityManager as any).entities || []).find((e: any) => e.uuid === characterUUID) as IsolatedYukaCharacter | undefined;
+    if (!agent || !(agent as any).activePathData) {
+        console.warn(`Agent with UUID ${characterUUID} not found or does not support pathfinding.`);
+         // Emit event for path clear/fail
+        emitEvent('pathCleared', characterUUID);
+        return false;
+    }
+
+    // Request pathfinding from the worker pool
+    const from = (agent as any).position;
+    const to = targetPosition;
+
+    console.log(`[aiAgentManager] Requesting path from ${from.toArray()} to ${to.toArray()} for agent ${characterUUID}`);
+
+    try {
+        const pathData = await requestNavMeshPathfinding({ x: from.x, y: from.y, z: from.z }, { x: to.x, y: to.y, z: to.z });
+
+        if (!pathData || pathData.length === 0) {
+            console.warn(`[aiAgentManager] No path found from ${from.toArray()} to ${to.toArray()}`);
+             // Emit event for path clear/fail
+            emitEvent('pathCleared', characterUUID);
+            return false;
+        }
+
+        // Convert path data (array of {x,y,z}) to THREE.Vector3 array, cast point to any to fix linter
+        const pathPoints = pathData.map((point: any) => new THREE.Vector3(point.x, point.y, point.z));
+
+        // Update agent's path data
+        (agent as any).activePathData = {
+            path: pathPoints,
+            currentIndex: 0,
+            targetPosition: targetPosition.clone() // Store target position
+        };
+
+        console.log(`[aiAgentManager] Path found with ${pathPoints.length} points.`);
+        // Emit event for path found
+        emitEvent('pathUpdated', { agentUUID: characterUUID, path: pathPoints, currentIndex: 0 });
+
+        return true;
+
+    } catch (error) {
+        console.error('[aiAgentManager] Error finding path via worker:', error);
+        // Emit event for path clear/fail on error
+        emitEvent('pathCleared', characterUUID);
+        return false;
+    }
+}
+
+// Set agent AI controlled
+export function setAgentAIControlled(characterUUID: string, aiControlled: boolean): boolean {
+    const agent = Array.from((yukaEntityManager as any).entities || []).find((e: any) => e.uuid === characterUUID) as IsolatedYukaCharacter | undefined;
+    if (!agent) {
+        console.warn(`Agent with UUID ${characterUUID} not found.`);
+        return false;
+    }
+
+    if ((agent as any).isUnderAIControl !== undefined) {
+        (agent as any).isUnderAIControl = () => aiControlled;
+        console.log(`Agent ${characterUUID} AI controlled set to: ${aiControlled}`);
+        // Emit event for AI control change
+        emitEvent('agentAIControlChanged', { agentUUID: characterUUID, controlledBy: aiControlled ? 'AI' : 'Player' });
+        return true;
+    }
+
+    console.warn(`Agent with UUID ${characterUUID} does not have isUnderAIControl property.`);
+    return false;
+}
+
+// Function to handle teleporting an agent
+function handleTeleportAgent(data: { agentUUID: string; position: { x: number; y: number; z: number } }) {
+    // Find agent by UUID in the entity manager's entities array
+    const agent = Array.from((yukaEntityManager as any).entities || []).find(
+        (e: any) => e.uuid === data.agentUUID
+    ) as any;
+    if (agent) {
+        agent.position.set(data.position.x, data.position.y, data.position.z);
+        agent.velocity?.set(0, 0, 0);
+        
+        // Update the physics state if it exists
+        const physicsState = yukaAgentPhysicsStates.get(data.agentUUID);
+        if (physicsState) {
+            physicsState.position = new THREE.Vector3(data.position.x, data.position.y, data.position.z);
+            physicsState.yVelocity = 0;
+        }
+        
+        // Update the THREE.js object if it exists
+        const threeObj = agent.userData?.threeObject as THREE.Object3D | undefined;
+        if (threeObj) {
+            threeObj.position.set(data.position.x, data.position.y, data.position.z);
+        }
+        
+        console.log(`[aiAgentManager] Teleported agent ${data.agentUUID} to`, data.position);
+    } else {
+        console.warn(`[aiAgentManager] Agent with UUID ${data.agentUUID} not found for teleport`);
+    }
+}
+
+// Subscribe to the teleportAgent event
+onEvent('teleportAgent', handleTeleportAgent);
+
+// Add state management event handler
+function handleSetAgentState(data: { agentUUID: string; state: string; target?: { x: number; y: number; z: number } }) {
+    const agent = getAgents().find((a: any) => a.uuid === data.agentUUID);
+    if (!agent) {
+        console.warn('[AIAgentManager] Agent not found:', data.agentUUID);
+        return;
+    }
+
+    // Type assertion to any to avoid TypeScript errors for dynamic properties
+    const agentAny = agent as any;
+
+    switch (data.state) {
+        case 'idle':
+            if (agentAny.returnToIdle) agentAny.returnToIdle();
+            break;
+        case 'patrol':
+            if (agentAny.startPatrolling) agentAny.startPatrolling();
+            break;
+        case 'chase':
+            if (data.target && agentAny.startChasing) {
+                const target = new YukaVector3(data.target.x, data.target.y, data.target.z);
+                agentAny.startChasing(target);
+            }
+            break;
+        case 'flee':
+            if (data.target && agentAny.startFleeing) {
+                const target = new YukaVector3(data.target.x, data.target.y, data.target.z);
+                agentAny.startFleeing(target);
+            }
+            break;
+        default:
+            console.warn('[AIAgentManager] Unknown state:', data.state);
+    }
+}
+
+// Add event listener for state management
+onEvent('setAgentState', (data: { agentUUID: string; state: string; target?: { x: number; y: number; z: number } }) => handleSetAgentState(data));
+
+// Update handleAddSteeringBehavior to work with the state system
+// This function is intentionally unused but kept for future use
+// @ts-ignore - TypeScript doesn't recognize the usage in other files
+export function handleAddSteeringBehavior(data: { agentUUID: string; behaviorType: string; params?: any }): void {
+    const agent = yukaEntityManager?.entities?.find((e: any) => e.uuid === data.agentUUID) as IsolatedYukaCharacter | undefined;
+    if (!agent) {
+        console.warn(`[aiAgentManager] Agent ${data.agentUUID} not found`);
+        return;
+    }
+
+    // Clear existing behaviors
+    if (agent.steering) {
+        agent.steering.clear();
+    }
+
+    // Create and add the new behavior
+    let behavior: any = null;
+    switch (data.behaviorType) {
+        case 'seek':
+            if (data.params?.target) {
+                const target = new YukaVector3(data.params.target.x, data.params.target.y, data.params.target.z);
+                behavior = new (SeekBehavior as any)(target, data.params.deceleration);
+            }
+            break;
+        case 'arrive':
+            if (data.params?.target) {
+                const target = new YukaVector3(data.params.target.x, data.params.target.y, data.params.target.z);
+                behavior = new (ArriveBehavior as any)(target, data.params.decelerationDistance, data.params.deceleration);
+            }
+            break;
+        case 'wander':
+            // Using ArriveBehavior as a fallback since WanderBehavior is not available
+            behavior = new (ArriveBehavior as any)(new YukaVector3(0, 0, 0));
+            console.warn('WanderBehavior is not available, using ArriveBehavior as fallback');
+            break;
+        // Add other behavior types as needed
+        default:
+            console.warn(`[aiAgentManager] Unknown behavior type: ${data.behaviorType}`);
+            return;
+    }
+
+    if (behavior) {
+        agent.steering.add(behavior);
+        console.log(`[aiAgentManager] Added ${data.behaviorType} behavior to agent ${data.agentUUID}`);
+    }
+}
+}
+
+// Agent cleanup
+export function cleanupYuka() {
+    // Remove the clearNavMeshDebug call as it's not defined with the correct signature
+    // This function is intentionally left empty as the implementation is not needed
+    // and causes type errors with the current setup
+    if (yukaEntityManager) {
+        const entitiesToRemove = Array.from((yukaEntityManager as any).entities || []);
+        entitiesToRemove.forEach((entity: any) => {
+            if (entity instanceof IsolatedYukaCharacter) {
+                yukaAgentProxyCameras.delete(entity.uuid);
+                yukaAgentPhysicsStates.delete(entity.uuid);
+                aiPathCache.delete(entity.uuid);
+                entity.dispose();
+            } else {
+                const renderComponent = (entity as any).renderComponent as THREE.Mesh;
+                if (renderComponent && sketchbookWorldAdapterInstance && renderComponent.parent === sketchbookWorldAdapterInstance.graphicsWorld) {
+                    sketchbookWorldAdapterInstance.graphicsWorld.remove(renderComponent);
+                    if (renderComponent.geometry) renderComponent.geometry.dispose();
+                    if (renderComponent.material) {
+                        if (Array.isArray(renderComponent.material)) {
+                            renderComponent.material.forEach(mat => mat.dispose());
+                        } else {
+                            renderComponent.material.dispose();
+                        }
+                    }
+                }
+                if (typeof (yukaEntityManager as any).remove === 'function') {
+                    (yukaEntityManager as any).remove(entity);
+                }
+            }
+        });
+    }
+}
+
+// Set agent destination
+export async function setAgentDestination(characterUUID: string, targetPosition: THREE.Vector3): Promise<boolean> {
+    const agent = Array.from((yukaEntityManager as any).entities || []).find((e: any) => e.uuid === characterUUID) as IsolatedYukaCharacter | undefined;
+    if (!agent || !(agent as any).activePathData) {
+        console.warn(`Agent with UUID ${characterUUID} not found or does not support pathfinding.`);
+         // Emit event for path clear/fail
+        emitEvent('pathCleared', characterUUID);
+        return false;
+    }
+
+    // Request pathfinding from the worker pool
+    const from = (agent as any).position;
+    const to = targetPosition;
+
+    console.log(`[aiAgentManager] Requesting path from ${from.toArray()} to ${to.toArray()} for agent ${characterUUID}`);
+
+    try {
+        const pathData = await requestNavMeshPathfinding({ x: from.x, y: from.y, z: from.z }, { x: to.x, y: to.y, z: to.z });
+
+        if (!pathData || pathData.length === 0) {
+            console.warn(`[aiAgentManager] No path found from ${from.toArray()} to ${to.toArray()}`);
+             // Emit event for path clear/fail
+            emitEvent('pathCleared', characterUUID);
+            return false;
+        }
+
+        // Convert path data (array of {x,y,z}) to THREE.Vector3 array, cast point to any to fix linter
+        const pathPoints = pathData.map((point: any) => new THREE.Vector3(point.x, point.y, point.z));
+
+        // Update agent's path data
+        (agent as any).activePathData = {
+            path: pathPoints,
+            currentIndex: 0,
+            targetPosition: targetPosition.clone() // Store target position
+        };
+
+        console.log(`[aiAgentManager] Path found with ${pathPoints.length} points.`);
+        // Emit event for path found
+        emitEvent('pathUpdated', { agentUUID: characterUUID, path: pathPoints, currentIndex: 0 });
+
+        return true;
+
+    } catch (error) {
+        console.error('[aiAgentManager] Error finding path via worker:', error);
+        // Emit event for path clear/fail on error
+        emitEvent('pathCleared', characterUUID);
+        return false;
+    }
+}
+
+// Set agent AI controlled
+export function setAgentAIControlled(characterUUID: string, aiControlled: boolean): boolean {
+    const agent = Array.from((yukaEntityManager as any).entities || []).find((e: any) => e.uuid === characterUUID) as IsolatedYukaCharacter | undefined;
+    if (!agent) {
+        console.warn(`Agent with UUID ${characterUUID} not found.`);
+        return false;
+    }
+
+    if ((agent as any).isUnderAIControl !== undefined) {
+        (agent as any).isUnderAIControl = () => aiControlled;
+        console.log(`Agent ${characterUUID} AI controlled set to: ${aiControlled}`);
+        // Emit event for AI control change
+        emitEvent('agentAIControlChanged', { agentUUID: characterUUID, controlledBy: aiControlled ? 'AI' : 'Player' });
+        return true;
+    }
+
+    console.warn(`Agent with UUID ${characterUUID} does not have isUnderAIControl property.`);
+    return false;
+}
+
+// Function to handle teleporting an agent
+function handleTeleportAgent(data: { agentUUID: string; position: { x: number; y: number; z: number } }) {
+    // Find agent by UUID in the entity manager's entities array
+    const agent = Array.from((yukaEntityManager as any).entities || []).find(
+        (e: any) => e.uuid === data.agentUUID
+    ) as any;
+    if (agent) {
+        agent.position.set(data.position.x, data.position.y, data.position.z);
+        agent.velocity?.set(0, 0, 0);
+        
+        // Update the physics state if it exists
+        const physicsState = yukaAgentPhysicsStates.get(data.agentUUID);
+        if (physicsState) {
+            physicsState.position = new THREE.Vector3(data.position.x, data.position.y, data.position.z);
+            physicsState.yVelocity = 0;
+        }
+        
+        // Update the THREE.js object if it exists
+        const threeObj = agent.userData?.threeObject as THREE.Object3D | undefined;
+        if (threeObj) {
+            threeObj.position.set(data.position.x, data.position.y, data.position.z);
+        }
+        
+        console.log(`[aiAgentManager] Teleported agent ${data.agentUUID} to`, data.position);
+    } else {
+        console.warn(`[aiAgentManager] Agent with UUID ${data.agentUUID} not found for teleport`);
+    }
+}
+
+// Subscribe to the teleportAgent event
+onEvent('teleportAgent', handleTeleportAgent);
+
+// Add state management event handler
+function handleSetAgentState(data: { agentUUID: string; state: string; target?: { x: number; y: number; z: number } }) {
+    const agent = getAgents().find((a: any) => a.uuid === data.agentUUID);
+    if (!agent) {
+        console.warn('[AIAgentManager] Agent not found:', data.agentUUID);
+        return;
+    }
+
+    // Type assertion to any to avoid TypeScript errors for dynamic properties
+    const agentAny = agent as any;
+
+    switch (data.state) {
+        case 'idle':
+            if (agentAny.returnToIdle) agentAny.returnToIdle();
+            break;
+        case 'patrol':
+            if (agentAny.startPatrolling) agentAny.startPatrolling();
+            break;
+        case 'chase':
+            if (data.target && agentAny.startChasing) {
+                const target = new YukaVector3(data.target.x, data.target.y, data.target.z);
+                agentAny.startChasing(target);
+            }
+            break;
+        case 'flee':
+            if (data.target && agentAny.startFleeing) {
+                const target = new YukaVector3(data.target.x, data.target.y, data.target.z);
+                agentAny.startFleeing(target);
+            }
+            break;
+        default:
+            console.warn('[AIAgentManager] Unknown state:', data.state);
+    }
+}
+
+// Add event listener for state management
+onEvent('setAgentState', (data: { agentUUID: string; state: string; target?: { x: number; y: number; z: number } }) => handleSetAgentState(data));
+
+// Update handleAddSteeringBehavior to work with the state system
+// This function is intentionally unused but kept for future use
+// @ts-ignore - TypeScript doesn't recognize the usage in other files
+export function handleAddSteeringBehavior(data: { agentUUID: string; behaviorType: string; params?: any }): void {
+    const agent = yukaEntityManager?.entities?.find((e: any) => e.uuid === data.agentUUID) as IsolatedYukaCharacter | undefined;
+    if (!agent) {
+        console.warn(`[aiAgentManager] Agent ${data.agentUUID} not found`);
+        return;
+    }
+
+    // Clear existing behaviors
+    if (agent.steering) {
+        agent.steering.clear();
+    }
+
+    // Create and add the new behavior
+    let behavior: any = null;
+    switch (data.behaviorType) {
+        case 'seek':
+            if (data.params?.target) {
+                const target = new YukaVector3(data.params.target.x, data.params.target.y, data.params.target.z);
+                behavior = new (SeekBehavior as any)(target, data.params.deceleration);
+            }
+            break;
+        case 'arrive':
+            if (data.params?.target) {
+                const target = new YukaVector3(data.params.target.x, data.params.target.y, data.params.target.z);
+                behavior = new (ArriveBehavior as any)(target, data.params.decelerationDistance, data.params.deceleration);
+            }
+            break;
+        case 'wander':
+            // Using ArriveBehavior as a fallback since WanderBehavior is not available
+            behavior = new (ArriveBehavior as any)(new YukaVector3(0, 0, 0));
+            console.warn('WanderBehavior is not available, using ArriveBehavior as fallback');
+            break;
+        // Add other behavior types as needed
+        default:
+            console.warn(`[aiAgentManager] Unknown behavior type: ${data.behaviorType}`);
+            return;
+    }
+
+    if (behavior) {
+        agent.steering.add(behavior);
+        console.log(`[aiAgentManager] Added ${data.behaviorType} behavior to agent ${data.agentUUID}`);
+    }
+}
+}
+
+// Agent cleanup
+export function cleanupYuka() {
+    // Remove the clearNavMeshDebug call as it's not defined with the correct signature
+    // This function is intentionally left empty as the implementation is not needed
+    // and causes type errors with the current setup
+    if (yukaEntityManager) {
+        const entitiesToRemove = Array.from((yukaEntityManager as any).entities || []);
+        entitiesToRemove.forEach((entity: any) => {
+            if (entity instanceof IsolatedYukaCharacter) {
+                yukaAgentProxyCameras.delete(entity.uuid);
+                yukaAgentPhysicsStates.delete(entity.uuid);
+                aiPathCache.delete(entity.uuid);
+                entity.dispose();
+            } else {
+                const renderComponent = (entity as any).renderComponent as THREE.Mesh;
+                if (renderComponent && sketchbookWorldAdapterInstance && renderComponent.parent === sketchbookWorldAdapterInstance.graphicsWorld) {
+                    sketchbookWorldAdapterInstance.graphicsWorld.remove(renderComponent);
+                    if (renderComponent.geometry) renderComponent.geometry.dispose();
+                    if (renderComponent.material) {
+                        if (Array.isArray(renderComponent.material)) {
+                            renderComponent.material.forEach(mat => mat.dispose());
+                        } else {
+                            renderComponent.material.dispose();
+                        }
+                    }
+                }
+                if (typeof (yukaEntityManager as any).remove === 'function') {
+                    (yukaEntityManager as any).remove(entity);
+                }
+            }
+        });
+    }
+}
+
+// Set agent destination
+export async function setAgentDestination(characterUUID: string, targetPosition: THREE.Vector3): Promise<boolean> {
+    const agent = Array.from((yukaEntityManager as any).entities || []).find((e: any) => e.uuid === characterUUID) as IsolatedYukaCharacter | undefined;
+    if (!agent || !(agent as any).activePathData) {
+        console.warn(`Agent with UUID ${characterUUID} not found or does not support pathfinding.`);
+         // Emit event for path clear/fail
+        emitEvent('pathCleared', characterUUID);
+        return false;
+    }
+
+    // Request pathfinding from the worker pool
+    const from = (agent as any).position;
+    const to = targetPosition;
+
+    console.log(`[aiAgentManager] Requesting path from ${from.toArray()} to ${to.toArray()} for agent ${characterUUID}`);
+
+    try {
+        const pathData = await requestNavMeshPathfinding({ x: from.x, y: from.y, z: from.z }, { x: to.x, y: to.y, z: to.z });
+
+        if (!pathData || pathData.length === 0) {
+            console.warn(`[aiAgentManager] No path found from ${from.toArray()} to ${to.toArray()}`);
+             // Emit event for path clear/fail
+            emitEvent('pathCleared', characterUUID);
+            return false;
+        }
+
+        // Convert path data (array of {x,y,z}) to THREE.Vector3 array, cast point to any to fix linter
+        const pathPoints = pathData.map((point: any) => new THREE.Vector3(point.x, point.y, point.z));
+
+        // Update agent's path data
+        (agent as any).activePathData = {
+            path: pathPoints,
+            currentIndex: 0,
+            targetPosition: targetPosition.clone() // Store target position
+        };
+
+        console.log(`[aiAgentManager] Path found with ${pathPoints.length} points.`);
+        // Emit event for path found
+        emitEvent('pathUpdated', { agentUUID: characterUUID, path: pathPoints, currentIndex: 0 });
+
+        return true;
+
+    } catch (error) {
+        console.error('[aiAgentManager] Error finding path via worker:', error);
+        // Emit event for path clear/fail on error
+        emitEvent('pathCleared', characterUUID);
+        return false;
+    }
+}
+
+// Set agent AI controlled
+export function setAgentAIControlled(characterUUID: string, aiControlled: boolean): boolean {
+    const agent = Array.from((yukaEntityManager as any).entities || []).find((e: any) => e.uuid === characterUUID) as IsolatedYukaCharacter | undefined;
+    if (!agent) {
+        console.warn(`Agent with UUID ${characterUUID} not found.`);
+        return false;
+    }
+
+    if ((agent as any).isUnderAIControl !== undefined) {
+        (agent as any).isUnderAIControl = () => aiControlled;
+        console.log(`Agent ${characterUUID} AI controlled set to: ${aiControlled}`);
+        // Emit event for AI control change
+        emitEvent('agentAIControlChanged', { agentUUID: characterUUID, controlledBy: aiControlled ? 'AI' : 'Player' });
+        return true;
+    }
+
+    console.warn(`Agent with UUID ${characterUUID} does not have isUnderAIControl property.`);
+    return false;
+}
+
+// Function to handle teleporting an agent
+function handleTeleportAgent(data: { agentUUID: string; position: { x: number; y: number; z: number } }) {
+    // Find agent by UUID in the entity manager's entities array
+    const agent = Array.from((yukaEntityManager as any).entities || []).find(
+        (e: any) => e.uuid === data.agentUUID
+    ) as any;
+    if (agent) {
+        agent.position.set(data.position.x, data.position.y, data.position.z);
+        agent.velocity?.set(0, 0, 0);
+        
+        // Update the physics state if it exists
+        const physicsState = yukaAgentPhysicsStates.get(data.agentUUID);
+        if (physicsState) {
+            physicsState.position = new THREE.Vector3(data.position.x, data.position.y, data.position.z);
+            physicsState.yVelocity = 0;
+        }
+        
+        // Update the THREE.js object if it exists
+        const threeObj = agent.userData?.threeObject as THREE.Object3D | undefined;
+        if (threeObj) {
+            threeObj.position.set(data.position.x, data.position.y, data.position.z);
+        }
+        
+        console.log(`[aiAgentManager] Teleported agent ${data.agentUUID} to`, data.position);
+    } else {
+        console.warn(`[aiAgentManager] Agent with UUID ${data.agentUUID} not found for teleport`);
+    }
+}
+
+// Subscribe to the teleportAgent event
+onEvent('teleportAgent', handleTeleportAgent);
+
+// Add state management event handler
+function handleSetAgentState(data: { agentUUID: string; state: string; target?: { x: number; y: number; z: number } }) {
+    const agent = getAgents().find((a: any) => a.uuid === data.agentUUID);
+    if (!agent) {
+        console.warn('[AIAgentManager] Agent not found:', data.agentUUID);
+        return;
+    }

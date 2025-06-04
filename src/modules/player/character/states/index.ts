@@ -5,7 +5,7 @@
  */
 
 // Import and re-export the state factory from Sketchbook
-import { createCharacterStates } from '../../../../debug/modules/ui/sketchbookStates';
+import { createCharacterStates } from '../../../../debug/modules/ui/sketchbook/entities/characters/states/characterStates';
 
 // Re-export individual states for direct access
 import { 
@@ -28,7 +28,7 @@ import {
     StartWalkBackRight,
     IdleRotateLeft,
     IdleRotateRight
-} from '../../../../debug/modules/ui/sketchbookStates';
+} from '../../../../debug/modules/ui/sketchbook/entities/characters/states/characterStates';
 
 export {
     // Factory function to create all states
@@ -56,4 +56,4 @@ export {
     StartWalkBackRight,
     IdleRotateLeft,
     IdleRotateRight
-}; 
+};

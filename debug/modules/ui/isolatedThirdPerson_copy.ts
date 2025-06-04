@@ -406,6 +406,10 @@ export function initIsolatedThirdPerson(params: InitIsolatedThirdPersonParams) {
 
                 characterRef.setPosition(spawnPos.x, spawnPos.y, spawnPos.z);
                 console.log("[TP Init GLTF Callback] Character position set.");
+                
+                // Store character reference for terrain repositioning
+                (window as any).tpCharacterRef = characterRef;
+                (window as any).tpCharacterPositioned = false;
 
                 console.log("[TP Init GLTF Callback] Attempting to instantiate CameraOperator...");
                 cameraOperatorRef = new CameraOperator(sketchbookWorldAdapterInstance as any, thirdPersonCamera as any);
@@ -417,7 +421,7 @@ export function initIsolatedThirdPerson(params: InitIsolatedThirdPersonParams) {
 
                 cameraOperatorRef.followMode = true; 
                 if (characterRef) { 
-                    cameraOperatorRef.target = characterRef.position; 
+                    cameraOperatorRef.target.copy(characterRef.position); 
                 }
                 cameraOperatorRef.setRadius(5, true); 
                 console.log("[TP Init GLTF Callback] CameraOperator configured.");
@@ -495,7 +499,47 @@ export function initIsolatedThirdPerson(params: InitIsolatedThirdPersonParams) {
         console.error("TP Mode: CRITICAL: Failed to initialize worker pool. Dynamic loading will be impaired.");
     }
 
-    // --- Preloading moved to after character loading in GLTF callback ---
+    // --- Preload Initial Chunks (around character spawn) ---
+    if (characterRef && tpNoiseLayers && tpSeed) { // Ensure character is loaded for position
+        const initialCharChunkX = Math.floor(characterRef.position.x / CHUNK_SIZE);
+        const initialCharChunkY = Math.floor(characterRef.position.y / CHUNK_HEIGHT);
+        const initialCharChunkZ = Math.floor(characterRef.position.z / CHUNK_SIZE);
+
+        tpLastCharacterChunkX = initialCharChunkX;
+        tpLastCharacterChunkY = initialCharChunkY;
+        tpLastCharacterChunkZ = initialCharChunkZ;
+
+        console.log(`TP Mode: Preloading initial chunks around (${initialCharChunkX}, ${initialCharChunkY}, ${initialCharChunkZ})`);
+        const preloadRadius = 1; // e.g., a 3x3 horizontal area, 1 layer vertically
+        for (let dy = -TP_VERTICAL_LOAD_RADIUS_BELOW; dy <= TP_VERTICAL_LOAD_RADIUS_ABOVE; dy++) {
+            for (let dx = -preloadRadius; dx <= preloadRadius; dx++) {
+                for (let dz = -preloadRadius; dz <= preloadRadius; dz++) {
+                    const preloadX = initialCharChunkX + dx;
+                    const preloadY = initialCharChunkY + dy;
+                    const preloadZ = initialCharChunkZ + dz;
+                    const chunkKey = getChunkKeyY(preloadX, preloadY, preloadZ);
+
+                    if (!tpLoadedChunks[chunkKey] && !tpPendingRequests.has(chunkKey)) {
+                        console.log(`TP Mode: Pre-requesting ${chunkKey}`);
+                        tpLoadedChunks[chunkKey] = { // Placeholder
+                            mesh: null,
+                            noiseMap: null,
+                            lastAccessTime: Date.now()
+                        };
+                        if (requestChunkGeometry(preloadX, preloadY, preloadZ, tpNoiseLayers, tpSeed)) {
+                            tpPendingRequests.add(chunkKey);
+                        } else {
+                            console.error(`[TP Init Preload] Failed to post message to worker for chunk ${chunkKey}.`);
+                            delete tpLoadedChunks[chunkKey]; 
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        console.warn("TP Mode: CharacterRef not available at preloading stage, or missing gen params. Initial preloading skipped.");
+    }
+    // --- End Preload ---
 
     // --- Add initial boundary visualization ---
     if (sceneRef) {
@@ -1333,9 +1377,77 @@ function removeRemotePlayer(playerId: string) {
     }
 }
 
-// --- Terrain Height Finding Function ---
-function findTerrainHeightAtPosition(x: number, z: number, chunkMeshes: { [key: string]: THREE.Mesh }): number | null {
-    // Use raycasting to find the terrain height at the given x, z position
+// Export multiplayer functions for external use
+export { updateRemotePlayer, removeRemotePlayer };
+// --- END Multiplayer Functions ---
+
+// --- Wrapper function for MultiplayerPanelLoader compatibility ---
+export async function initIsolatedThirdPersonView(scene: THREE.Scene, camera: THREE.Camera, renderer: THREE.WebGLRenderer) {
+    console.log('[TP View] initIsolatedThirdPersonView called with:', { scene, camera, renderer });
+    
+    // Get terrain data from isolatedTerrainViewer if available
+    const terrainViewer = (window as any).isolatedTerrainViewer;
+    if (!terrainViewer) {
+        console.error('[TP View] isolatedTerrainViewer not found on window object');
+        return;
+    }
+    
+    // Import terrain generation parameters from core module
+    let noiseLayers, seed, compInfo, noiseScale, planetOffset;
+    try {
+        const coreModule = await import('./isolatedTerrainViewer/core');
+        noiseLayers = coreModule.getCurrentNoiseLayers();
+        seed = coreModule.getCurrentSeed();
+        compInfo = coreModule.getCurrentCompInfo();
+        noiseScale = coreModule.getCurrentNoiseScale();
+        planetOffset = coreModule.getCurrentPlanetOffset();
+    } catch (error) {
+        console.error('[TP View] Failed to import terrain generation parameters:', error);
+        return;
+    }
+    
+    // Get current terrain state
+    const initialLoadedChunks = terrainViewer.currentChunkMeshesForCollision || {};
+    const initialChunkMeshes = terrainViewer.currentChunkMeshesForCollision || {};
+    
+    if (!noiseLayers || !seed) {
+        console.error('[TP View] Missing required terrain generation parameters');
+        return;
+    }
+    
+    // Initialize with proper parameters
+    const params: InitIsolatedThirdPersonParams = {
+        scene,
+        renderer,
+        initialLoadedChunks,
+        initialChunkMeshes,
+        noiseLayers,
+        seed,
+        compInfo,
+        noiseScale,
+        planetOffset,
+        onExit: () => {
+            console.log('[TP View] Third person mode exited');
+        }
+    };
+    
+    return initIsolatedThirdPerson(params);
+}
+
+// Need to import lodash for _.remove in unregisterUpdatable
+import _ from 'lodash';
+
+import {
+  loadChunksAroundPlayer,
+  handleWorkerResult,
+  generateLocalMesh
+} from './chunkLoaderUtils';
+
+import { appendToCustomLog, initCustomLogger } from './customLogger'; // Import custom logger
+
+// Helper function to find terrain height at a given x,z position
+export function findTerrainHeightAtPosition(x: number, z: number, chunkMeshes: ChunkMeshesRef): number | null {
+    // Create a raycaster pointing downward from high above
     const raycaster = new THREE.Raycaster();
     const origin = new THREE.Vector3(x, CHUNK_HEIGHT * 2, z); // Start from high above
     const direction = new THREE.Vector3(0, -1, 0); // Point downward
@@ -1369,82 +1481,3 @@ function findTerrainHeightAtPosition(x: number, z: number, chunkMeshes: { [key: 
     console.warn(`[findTerrainHeight] No terrain intersection found at position (${x}, ${z})`);
     return null;
 }
-
-// Export multiplayer functions for external use
-export { updateRemotePlayer, removeRemotePlayer };
-// --- END Multiplayer Functions ---
-
-// --- Wrapper function for MultiplayerPanelLoader compatibility ---
-export async function initIsolatedThirdPersonView(scene: THREE.Scene, camera: THREE.Camera, renderer: THREE.WebGLRenderer) {
-    console.log('[TP View] initIsolatedThirdPersonView called with:', { scene, camera, renderer });
-    
-    // Get terrain data from isolatedTerrainViewer if available
-    const terrainViewer = (window as any).isolatedTerrainViewer;
-    if (!terrainViewer) {
-        console.error('[TP View] isolatedTerrainViewer not found on window object');
-        return;
-    }
-    
-    // Import terrain generation parameters from core module
-    let noiseLayers, seed, compInfo, noiseScale, planetOffset;
-    try {
-        const coreModule = await import('./isolatedTerrainViewer/core');
-        noiseLayers = coreModule.getCurrentNoiseLayers();
-        seed = coreModule.getCurrentSeed();
-        compInfo = coreModule.getCurrentCompInfo();
-        noiseScale = coreModule.getCurrentNoiseScale();
-        planetOffset = coreModule.getCurrentPlanetOffset();
-        
-        console.log('[TP View] Retrieved generation parameters:', {
-            noiseLayers: noiseLayers?.length,
-            seed,
-            compInfo,
-            noiseScale,
-            planetOffset
-        });
-    } catch (error) {
-        console.error('[TP View] Failed to import core module:', error);
-        return;
-    }
-    
-    // Get loaded chunks and meshes from terrain viewer
-    const loadedChunks = terrainViewer.getLoadedChunks ? terrainViewer.getLoadedChunks() : {};
-    const chunkMeshes = terrainViewer.getChunkMeshes ? terrainViewer.getChunkMeshes() : {};
-    
-    console.log('[TP View] Retrieved terrain data:', {
-        loadedChunksCount: Object.keys(loadedChunks).length,
-        chunkMeshesCount: Object.keys(chunkMeshes).length
-    });
-    
-    // Initialize third person mode with terrain data
-    const params: InitIsolatedThirdPersonParams = {
-        scene,
-        camera,
-        renderer,
-        onExit: () => {
-            console.log('[TP View] Third person mode exited');
-            // Additional cleanup if needed
-        },
-        initialLoadedChunks: loadedChunks,
-        initialChunkMeshes: chunkMeshes,
-        noiseLayers,
-        seed,
-        compInfo,
-        noiseScale,
-        planetOffset,
-        enableMultiplayer: false // Can be made configurable
-    };
-    
-    initIsolatedThirdPerson(params);
-}
-
-// Need to import lodash for _.remove in unregisterUpdatable
-import _ from 'lodash';
-
-import {
-  loadChunksAroundPlayer,
-  handleWorkerResult,
-  generateLocalMesh
-} from './chunkLoaderUtils';
-
-import { appendToCustomLog, initCustomLogger } from './customLogger'; // Import custom logger

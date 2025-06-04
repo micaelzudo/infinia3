@@ -1017,7 +1017,12 @@ function updateChunkKeysDisplay() {
                 chunkKeysDisplay.textContent = displayText;
             }
         }
-         console.log('[YukaAIPanel] updateChunkKeysDisplay: Found and displayed', chunkCount, 'chunks.');
+        // Throttle chunk display logging to once every 10 seconds
+        const now = Date.now();
+        if (!window.lastChunkDisplayLogTime || now - window.lastChunkDisplayLogTime > 10000) {
+            console.log('[YukaAIPanel] updateChunkKeysDisplay: Found and displayed', chunkCount, 'chunks.');
+            window.lastChunkDisplayLogTime = now;
+        }
     } catch (error) {
         console.error('[YukaAIPanel] Error updating chunk display:', error);
     }

@@ -441,12 +441,17 @@ function animate(): void {
     orbitControls.update();
   }
   
-  // --- Log camera state if game has started ---
+  // --- Log camera state if game has started (throttled) ---
   if (gameInitialized) {
-    console.log(
-      `Camera Pos: x=${camera.position.x.toFixed(2)}, y=${camera.position.y.toFixed(2)}, z=${camera.position.z.toFixed(2)} | ` +
-      `Camera Rot: x=${camera.rotation.x.toFixed(2)}, y=${camera.rotation.y.toFixed(2)}, z=${camera.rotation.z.toFixed(2)}`
-    );
+    // Throttle camera position logging to once every 5 seconds
+    const now = Date.now();
+    if (!window.lastCameraLogTime || now - window.lastCameraLogTime > 5000) {
+      console.log(
+        `Camera Pos: x=${camera.position.x.toFixed(2)}, y=${camera.position.y.toFixed(2)}, z=${camera.position.z.toFixed(2)} | ` +
+        `Camera Rot: x=${camera.rotation.x.toFixed(2)}, y=${camera.rotation.y.toFixed(2)}, z=${camera.rotation.z.toFixed(2)}`
+      );
+      window.lastCameraLogTime = now;
+    }
   }
   // --------------------------------------------
   

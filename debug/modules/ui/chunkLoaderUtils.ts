@@ -175,6 +175,29 @@ export function handleWorkerResult(
       opts.tpLoadedChunks[chunkKey].mesh = mesh;
       opts.tpChunkMeshes[chunkKey] = mesh;
       opts.sceneRef.add(mesh);
+      
+      // Check if character needs repositioning on terrain
+      if ((window as any).tpCharacterRef && !((window as any).tpCharacterPositioned)) {
+        const characterRef = (window as any).tpCharacterRef;
+        const charChunkX = Math.floor(characterRef.position.x / 32); // CHUNK_SIZE
+        const charChunkZ = Math.floor(characterRef.position.z / 32); // CHUNK_SIZE
+        
+        // If this chunk is near the character spawn position, try to reposition
+        if (Math.abs(chunkX - charChunkX) <= 1 && Math.abs(chunkZ - charChunkZ) <= 1) {
+          // Import the terrain height function
+          import('./isolatedThirdPerson_copy').then(module => {
+            if (module.findTerrainHeightAtPosition) {
+              const terrainHeight = module.findTerrainHeightAtPosition(characterRef.position.x, characterRef.position.z, opts.tpChunkMeshes);
+              if (terrainHeight !== null) {
+                characterRef.position.y = terrainHeight + 2;
+                (window as any).tpCharacterPositioned = true;
+                console.log(`[TP Chunk Load] Repositioned character to terrain height: ${terrainHeight + 2}`);
+              }
+            }
+          }).catch(err => console.warn('[TP Chunk Load] Could not import terrain height function:', err));
+        }
+      }
+      
       return;
     } catch (e) {
       // fallback to local mesh gen

@@ -16,7 +16,7 @@ import { InputManager, InputState } from '../../../core/input/inputTypes';
 
 // Character components
 import { initializeCharacterPhysics, updateCharacterPhysics } from './characterPhysics';
-import { createCharacterStates } from '../states/sketchbookStates';
+import { createCharacterStates } from '../states/characterStates';
 
 // Enums
 import { PHYSICS_CONSTANTS } from '../../../types/sketchbookEnums';

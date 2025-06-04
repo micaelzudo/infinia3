@@ -20,8 +20,6 @@ import {
     initPhysics, 
     cleanupPhysics, 
     updatePhysics, 
-    startPhysicsSimulation, 
-    stopPhysicsSimulation,
     togglePhysicsDebug,
     getPhysicsWorld,
     getGroundMaterial,
@@ -92,9 +90,6 @@ export function initIsolatedViewer(container: HTMLDivElement) {
 
     // Initialize mining
     initMining(container);
-
-    // Start physics simulation
-    startPhysicsSimulation();
 }
 
 // Main update loop
@@ -138,8 +133,6 @@ export {
     getCurrentPlanetOffset,
 
     // Physics
-    startPhysicsSimulation,
-    stopPhysicsSimulation,
     togglePhysicsDebug,
     getPhysicsWorld,
     getGroundMaterial,
@@ -191,4 +184,4 @@ export {
     areWorldBoundariesVisible,
     getTrueChunkBoundariesGroup,
     getWorldChunkBoundariesGroup
-}; 
+};

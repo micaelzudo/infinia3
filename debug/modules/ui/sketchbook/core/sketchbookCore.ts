@@ -11,7 +11,7 @@ import * as CANNON from 'cannon';
 import { CharacterManager } from '../entities/characters/core/characterManager';
 import { CharacterInputHandler } from '../entities/characters/core/characterInput';
 import { CharacterInitializer } from '../entities/characters/core/characterInitializer';
-import { createCharacterStates } from '../entities/characters/states/sketchbookStates';
+import { createCharacterStates } from '../entities/characters/states/characterStates';
 
 // Re-export our implementations
 export {
@@ -53,4 +53,4 @@ export class VectorConverter {
     static readonly RIGHT = new THREE.Vector3(1, 0, 0);
     static readonly FORWARD = new THREE.Vector3(0, 0, 1);
     static readonly BACK = new THREE.Vector3(0, 0, -1);
-} 
+}
