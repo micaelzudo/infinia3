@@ -281,7 +281,7 @@ export function updatePlayerMovementAndCollision(
 
     // Get meshes for current chunk and surrounding chunks for proper collision detection
     // IMPORTANT: Scan more chunks below player to find ground
-    const Y_SCAN_RANGE_GROUND = 1; // Scan current Y level and one below for ground
+    const Y_SCAN_RANGE_GROUND = 3; // Scan current Y level and three below for ground
     const Y_SCAN_RANGE_HORIZONTAL = 0; // Only current Y level for horizontal
     
     for (let dx = -COLLISION_CHUNK_RADIUS; dx <= COLLISION_CHUNK_RADIUS; dx++) {
@@ -346,6 +346,37 @@ export function updatePlayerMovementAndCollision(
         }
         if (DEBUG_MOVEMENT && nearbyChunkMeshesForGround.length > 0) {
             console.log(`[Movement] Found ${nearbyChunkMeshesForGround.length} meshes in wider ground scan.`);
+        }
+        
+        // If still no ground meshes found (AI agents in ungenerated areas), provide fallback
+        if (nearbyChunkMeshesForGround.length === 0) {
+            console.warn("[Movement] No ground meshes found even in wider scan. Using fallback ground level for AI agents.");
+            // For AI agents in ungenerated areas, assume ground level at Y=0 or slightly below current position
+            const fallbackGroundY = Math.min(0, fpCamera.position.y - 5);
+            if (fpCamera.position.y > fallbackGroundY + 1) {
+                // Apply gravity to bring agent down to fallback ground level
+                yVelocity -= GRAVITY * delta;
+                fpCamera.position.y += yVelocity * delta;
+                
+                // Check if we've reached the fallback ground
+                if (fpCamera.position.y <= fallbackGroundY) {
+                    fpCamera.position.y = fallbackGroundY;
+                    yVelocity = 0;
+                    grounded = true;
+                }
+            } else {
+                // Already at or below fallback ground level
+                fpCamera.position.y = Math.max(fpCamera.position.y, fallbackGroundY);
+                yVelocity = 0;
+                grounded = true;
+            }
+            
+            // Return early since we handled movement with fallback
+            return {
+                position: fpCamera.position.clone(),
+                yVelocity,
+                grounded
+            };
         }
     }
     
@@ -1284,4 +1315,4 @@ function checkHitboxMeshCollision(hitbox: THREE.Box3, mesh: THREE.Mesh): Collisi
 export type ChunkMeshesRef = { [key: string]: THREE.Mesh | null };
 export type AddDebugRayFn = (start: THREE.Vector3, end: THREE.Vector3, color: number) => void;
 export type SetDebugMaterialFn = (mesh: THREE.Mesh) => void; // Adjust map type if needed 
-*/ 
+*/

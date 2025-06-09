@@ -238,37 +238,37 @@ export class FuzzyLogicSystem {
         health.add(new TriangularFuzzySet('medium', 20, 50, 80));
         health.add(new RightShoulderFuzzySet('high', 70, 100, 100));
         
-        fuzzyModule.addVariable(health);
+        fuzzyModule.addFLV('health', health);
     }
     
     private setupDistanceVariable(fuzzyModule: FuzzyModule): void {
         const distance = new FuzzyVariable('distance');
         
-        distance.addSet(new LeftShoulderFuzzySet('close', 0, 0, 10));
-        distance.addSet(new TriangularFuzzySet('medium', 5, 15, 25));
-        distance.addSet(new RightShoulderFuzzySet('far', 20, 50, 50));
+        distance.add(new LeftShoulderFuzzySet('close', 0, 0, 10));
+        distance.add(new TriangularFuzzySet('medium', 5, 15, 25));
+        distance.add(new RightShoulderFuzzySet('far', 20, 50, 50));
         
-        fuzzyModule.addVariable(distance);
+        fuzzyModule.addFLV('distance', distance);
     }
     
     private setupThreatVariable(fuzzyModule: FuzzyModule): void {
         const threat = new FuzzyVariable('threat');
         
-        threat.addSet(new LeftShoulderFuzzySet('low', 0, 0, 3));
-        threat.addSet(new TriangularFuzzySet('medium', 2, 5, 8));
-        threat.addSet(new RightShoulderFuzzySet('high', 7, 10, 10));
+        threat.add(new LeftShoulderFuzzySet('low', 0, 0, 3));
+        threat.add(new TriangularFuzzySet('medium', 2, 5, 8));
+        threat.add(new RightShoulderFuzzySet('high', 7, 10, 10));
         
-        fuzzyModule.addVariable(threat);
+        fuzzyModule.addFLV('threat', threat);
     }
     
     private setupActionVariable(fuzzyModule: FuzzyModule): void {
         const action = new FuzzyVariable('action');
         
-        action.addSet(new LeftShoulderFuzzySet('flee', 0, 0, 3));
-        action.addSet(new TriangularFuzzySet('patrol', 2, 5, 8));
-        action.addSet(new RightShoulderFuzzySet('attack', 7, 10, 10));
+        action.add(new LeftShoulderFuzzySet('flee', 0, 0, 3));
+        action.add(new TriangularFuzzySet('patrol', 2, 5, 8));
+        action.add(new RightShoulderFuzzySet('attack', 7, 10, 10));
         
-        fuzzyModule.addVariable(action);
+        fuzzyModule.addFLV('action', action);
     }
     
     private setupFuzzyRules(fuzzyModule: FuzzyModule): void {

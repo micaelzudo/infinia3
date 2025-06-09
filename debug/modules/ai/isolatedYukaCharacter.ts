@@ -107,7 +107,8 @@ export class IsolatedYukaCharacter extends Vehicle {
 
         // Initialize State Machine
         this.stateMachine = new StateMachine(this);
-        this.stateMachine.changeTo(new IdleState());
+        this.stateMachine.add('IDLE', new IdleState()); // Add IdleState with an ID
+        this.stateMachine.changeTo('IDLE'); // Change to IdleState using its ID
         this.stateMachine.globalState = null;
         
         // Initialize Vision System
@@ -163,6 +164,45 @@ export class IsolatedYukaCharacter extends Vehicle {
                 this.sketchbookCharacter.position.y,
                 this.sketchbookCharacter.position.z
             );
+
+            // --- BEGIN NAVMESH CLAMPING ---
+            if (this.navMeshHelper && this.navMeshHelper.navMesh) {
+                const navMesh = this.navMeshHelper.navMesh;
+                // Use a small epsilon for region checks; consider making this configurable if needed
+                const epsilon = typeof (this.navMeshHelper as any).regionEpsilon === 'number' ? (this.navMeshHelper as any).regionEpsilon : 0.1;
+
+                const sourceYukaPosition = new YukaVector3(
+                    this.physicsState.previousPosition.x,
+                    this.physicsState.previousPosition.y,
+                    this.physicsState.previousPosition.z
+                );
+                
+                // The target position is the one calculated by Yuka's steering (this.position)
+                const targetYukaPosition = this.position.clone();
+
+                const currentRegion = navMesh.getRegionForPoint(sourceYukaPosition, epsilon);
+
+                if (currentRegion) {
+                    const clampedPosition = new YukaVector3();
+                    navMesh.clampMovement(
+                        currentRegion,
+                        sourceYukaPosition,
+                        targetYukaPosition,
+                        clampedPosition
+                    );
+                    // Update the Yuka entity's position with the clamped one
+                    this.position.copy(clampedPosition);
+
+                    // Adjust Y position to be on the surface of the (potentially new) NavMesh region
+                    const finalRegion = navMesh.getRegionForPoint(this.position, epsilon);
+                    if (finalRegion) {
+                        const projectedPoint = new YukaVector3();
+                        finalRegion.plane.projectPoint(this.position, projectedPoint);
+                        this.position.y = projectedPoint.y;
+                    }
+                } 
+            }
+            // --- END NAVMESH CLAMPING ---
 
             // Update orientation and animation
             this.sketchbookCharacter.quaternion.set(this.rotation.x, this.rotation.y, this.rotation.z, this.rotation.w);

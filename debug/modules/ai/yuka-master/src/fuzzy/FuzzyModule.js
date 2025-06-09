@@ -48,6 +48,18 @@ class FuzzyModule {
 	}
 
 	/**
+	* Returns the FLV under the given name.
+	*
+	* @param {String} name - The name of the FLV.
+	* @return {FuzzyVariable} The FLV.
+	*/
+	getVariable( name ) {
+
+		return this.flvs.get( name );
+
+	}
+
+	/**
 	* Remove the FLV under the given name from this fuzzy module.
 	*
 	* @param {String} name - The name of the FLV to remove.

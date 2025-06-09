@@ -24,6 +24,7 @@ import { genParams } from './aiTerrainManager';
 import { CHUNK_HEIGHT } from '../../constants_debug';
 import { yukaEntityManager, yukaTime } from './yukaManager';
 import { initYuka } from './yukaController';
+import { getTerrainParameters } from '../../terrainGenerationUtils/terrainConfigurator';
 
 // Import boxman model URL
 const boxmanModelURL = '/assets/boxman.glb';
@@ -428,7 +429,8 @@ export async function spawnYukaAgent(
         if (!getIsInitialized()) {
             console.log('[aiAgentManager] Initializing Yuka system...');
             try {
-                await initYuka(scene, camera, domElement);
+                const { noiseLayers, seed } = getTerrainParameters("DEFAULT"); // Or get planetType from somewhere
+                await initYuka(scene, camera, domElement, noiseLayers, seed);
                 console.log('[aiAgentManager] Yuka system initialized successfully');
             } catch (error) {
                 console.error('[aiAgentManager] Failed to initialize Yuka system:', error);
@@ -1128,7 +1130,10 @@ export function handleAddSteeringBehavior(data: { agentUUID: string; behaviorTyp
         } else {
             agent.setAIControlled(true);
             // Fallback to patrol if no NavMesh
-            agent.stateMachine.changeTo(new PatrolState());
+            if (!agent.stateMachine.states.has('PATROL')) {
+                    agent.stateMachine.add('PATROL', new PatrolState());
+                }
+                agent.stateMachine.changeTo('PATROL');
             console.log(`[AIAgentManager] Created agent ${name} with basic patrol behavior`);
         }
         
@@ -1150,7 +1155,10 @@ export function handleAddSteeringBehavior(data: { agentUUID: string; behaviorTyp
             
             // If agent is idle, start exploration
             if (agent.stateMachine.currentState instanceof IdleState) {
-                agent.stateMachine.changeTo(new ExploreState());
+                if (!agent.stateMachine.states.has('EXPLORE')) {
+                    agent.stateMachine.add('EXPLORE', new ExploreState());
+                }
+                agent.stateMachine.changeTo('EXPLORE');
                 console.log(`[AIAgentManager] Updated agent ${name} to start NavMesh exploration`);
             }
         });
@@ -1164,7 +1172,10 @@ export function handleAddSteeringBehavior(data: { agentUUID: string; behaviorTyp
     startExplorationForAllAgents(): void {
         this.agents.forEach((agent, name) => {
             if (agent.isUnderAIControl()) {
-                agent.stateMachine.changeTo(new ExploreState());
+                if (!agent.stateMachine.states.has('EXPLORE')) {
+                    agent.stateMachine.add('EXPLORE', new ExploreState());
+                }
+                agent.stateMachine.changeTo('EXPLORE');
                 console.log(`[AIAgentManager] Started exploration for agent ${name}`);
             }
         });

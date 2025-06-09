@@ -980,29 +980,41 @@ export function cleanupIsolatedThirdPerson() {
             const mesh = tpChunkMeshes[key];
             if (mesh) {
                 disposeNode(sceneRef, mesh);
+                sceneRef?.remove(mesh);
             }
+            // if (chunkData.physicsBody) physicsWorldRef?.removeBody(chunkData.physicsBody);
         }
+        tpChunkMeshes = {};
+        tpLoadedChunks = {};
+        tpPendingRequests.clear();
     }
-    tpChunkMeshes = {};
     tpLoadedChunks = {};
-    // --- End Clear ---
+    tpChunkMeshes = {};
+    tpPendingRequests.clear();
 
+    // Reset state variables
+    characterRef = null;
+    cameraOperatorRef = null;
+    sketchbookWorldAdapterInstance = null;
+    sceneRef = null;
+    rendererRef = null;
+    isActive = false;
+    tpForceChunkLoad = true; 
 
-    // --- Reset generation parameters ---
-    tpNoiseLayers = null;
-    tpSeed = null;
-    tpCompInfo = null;
-    tpNoiseScale = null;
-    tpPlanetOffset = null;
-    // --- End Reset ---
-
-
-    // --- Remove boundary visualization ---
-    if (sceneRef) {
-        removeStandardChunkBoundaries(sceneRef);
+    // Multiplayer cleanup (conceptual)
+    if (multiplayerApiRef) {
+        multiplayerApiRef.disconnect();
     }
+    multiplayerIntegrationRef = null;
+    multiplayerApiRef = null;
+    localPlayerDataRef = null;
+    remotePlayersDataRef.clear();
 
-    console.log("Isolated Third Person mode CLEANED UP.");
+    if (onExitCallback) {
+        onExitCallback();
+        onExitCallback = null;
+    }
+    console.log('[IsolatedThirdPerson] Cleaned up successfully.');
 }
 
 // --- Placeholder Input Handlers (to be integrated with your system or Sketchbook's InputManager) ---
@@ -1202,7 +1214,7 @@ function setupMultiplayerListeners() {
 }
 
 function handleMultiplayerSync(delta: number) {
-    if (!multiplayerEnabled || !infiniaMultiplayerAPI || !characterRef) return;
+    if (!multiplayerEnabled || !infiniaMultiplayerAPI || !characterRef || (thirdPersonMultiplayerIntegration && thirdPersonMultiplayerIntegration.isEnabled())) return;
     
     const currentTime = Date.now();
     
@@ -1268,7 +1280,8 @@ function updateRemotePlayers() {
 }
 
 function updateRemotePlayer(playerId: string, playerData: InfiniaPlayerData) {
-    if (!sceneRef || playerId === localPlayerId || playerId === infiniaMultiplayerAPI?.localPlayer?.identity) return;
+    // Keep this for the old system if SpacetimeDB isn't active
+    if (!sceneRef || playerId === localPlayerId || (thirdPersonMultiplayerIntegration && thirdPersonMultiplayerIntegration.isEnabled())) return;
     
     let playerMesh = remotePlayerMeshes.get(playerId);
     
@@ -1321,6 +1334,9 @@ function updateRemotePlayer(playerId: string, playerData: InfiniaPlayerData) {
 }
 
 function removeRemotePlayer(playerId: string) {
+    // Keep this for the old system if SpacetimeDB isn't active
+    if (thirdPersonMultiplayerIntegration && thirdPersonMultiplayerIntegration.isEnabled()) return;
+    
     const playerMesh = remotePlayerMeshes.get(playerId);
     if (playerMesh && sceneRef) {
         sceneRef.remove(playerMesh);

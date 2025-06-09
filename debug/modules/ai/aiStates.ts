@@ -36,14 +36,20 @@ export class IdleState extends State<IsolatedYukaCharacter> {
             // High alert - flee or fight
             if (visibleEntities.size > 0) {
                 const threat = Array.from(visibleEntities)[0];
-                character.stateMachine.changeTo(new FleeState(threat));
+                if (!character.stateMachine.states.has('FLEE')) {
+                    character.stateMachine.add('FLEE', new FleeState(threat));
+                }
+                character.stateMachine.changeTo('FLEE');
                 return;
             }
         } else if (alertLevel > 0.8) {
             // Medium alert - investigate
             const lastKnownPosition = character.getLastKnownPlayerPosition();
             if (lastKnownPosition) {
-                character.stateMachine.changeTo(new InvestigateState(lastKnownPosition));
+                if (!character.stateMachine.states.has('INVESTIGATE')) {
+                    character.stateMachine.add('INVESTIGATE', new InvestigateState(lastKnownPosition));
+                }
+                character.stateMachine.changeTo('INVESTIGATE');
                 return;
             }
         }
@@ -56,14 +62,20 @@ export class IdleState extends State<IsolatedYukaCharacter> {
         // If idle too long and not in combat, start exploring
         if (idleDuration > this.maxIdleTime && alertLevel < 0.5) {
             console.log(`[IdleState] ${character.name} idle too long, starting exploration`);
-            character.stateMachine.changeTo(new ExploreState());
+            if (!character.stateMachine.states.has('EXPLORE')) {
+                character.stateMachine.add('EXPLORE', new ExploreState());
+            }
+            character.stateMachine.changeTo('EXPLORE');
             return;
         }
         
         // Random chance to start patrolling
         if (idleDuration > this.maxIdleTime * 0.5 && Math.random() < 0.1) {
             console.log(`[IdleState] ${character.name} randomly starting patrol`);
-            character.stateMachine.changeTo(new PatrolState());
+            if (!character.stateMachine.states.has('PATROL')) {
+                character.stateMachine.add('PATROL', new PatrolState());
+            }
+            character.stateMachine.changeTo('PATROL');
         }
     }
     
@@ -112,7 +124,10 @@ export class PatrolState extends State<IsolatedYukaCharacter> {
         
         if (alertLevel > 1.5 && visibleEntities.size > 0) {
             const threat = Array.from(visibleEntities)[0];
-            character.stateMachine.changeTo(new ChaseState(threat));
+            if (!character.stateMachine.states.has('CHASE')) {
+                character.stateMachine.add('CHASE', new ChaseState(threat));
+            }
+            character.stateMachine.changeTo('CHASE');
             return;
         }
         
@@ -138,7 +153,10 @@ export class PatrolState extends State<IsolatedYukaCharacter> {
         
         // Random chance to switch to exploration
         if (Math.random() < 0.005) { // 0.5% chance per frame
-            character.stateMachine.changeTo(new ExploreState());
+            if (!character.stateMachine.states.has('EXPLORE')) {
+                character.stateMachine.add('EXPLORE', new ExploreState());
+            }
+            character.stateMachine.changeTo('EXPLORE');
         }
     }
     
@@ -207,14 +225,20 @@ export class ExploreState extends State<IsolatedYukaCharacter> {
         
         if (alertLevel > 1.5 && visibleEntities.size > 0) {
             const threat = Array.from(visibleEntities)[0];
-            character.stateMachine.changeTo(new ChaseState(threat));
+            if (!character.stateMachine.states.has('CHASE')) {
+                character.stateMachine.add('CHASE', new ChaseState(threat));
+            }
+            character.stateMachine.changeTo('CHASE');
             return;
         }
         
         if (alertLevel > 0.8) {
             const lastKnownPosition = character.getLastKnownPlayerPosition();
             if (lastKnownPosition) {
-                character.stateMachine.changeTo(new InvestigateState(lastKnownPosition));
+                if (!character.stateMachine.states.has('INVESTIGATE')) {
+                    character.stateMachine.add('INVESTIGATE', new InvestigateState(lastKnownPosition));
+                }
+                character.stateMachine.changeTo('INVESTIGATE');
                 return;
             }
         }
@@ -229,9 +253,15 @@ export class ExploreState extends State<IsolatedYukaCharacter> {
         if (explorationDuration > this.maxExplorationTime) {
             // Random choice between idle and patrol
             if (Math.random() < 0.6) {
-                character.stateMachine.changeTo(new PatrolState());
+                if (!character.stateMachine.states.has('PATROL')) {
+                    character.stateMachine.add('PATROL', new PatrolState());
+                }
+                character.stateMachine.changeTo('PATROL');
             } else {
-                character.stateMachine.changeTo(new IdleState());
+                if (!character.stateMachine.states.has('IDLE')) {
+                    character.stateMachine.add('IDLE', new IdleState());
+                }
+                character.stateMachine.changeTo('IDLE');
             }
         }
     }
@@ -292,7 +322,10 @@ export class ChaseState extends State<IsolatedYukaCharacter> {
         // Give up chase if target lost too long or chase too long
         if ((this.lostTargetTime > 0 && currentTime - this.lostTargetTime > this.maxLostTime) ||
             chaseDuration > this.maxChaseTime) {
-            character.stateMachine.changeTo(new InvestigateState(this.lastSeenPosition));
+            if (!character.stateMachine.states.has('INVESTIGATE')) {
+                character.stateMachine.add('INVESTIGATE', new InvestigateState(this.lastSeenPosition));
+            }
+            character.stateMachine.changeTo('INVESTIGATE');
         }
     }
     
@@ -336,7 +369,10 @@ export class InvestigateState extends State<IsolatedYukaCharacter> {
         const visibleEntities = character.getVisibleEntities();
         if (visibleEntities.size > 0) {
             const threat = Array.from(visibleEntities)[0];
-            character.stateMachine.changeTo(new ChaseState(threat));
+            if (!character.stateMachine.states.has('CHASE')) {
+                character.stateMachine.add('CHASE', new ChaseState(threat));
+            }
+            character.stateMachine.changeTo('CHASE');
             return;
         }
         
@@ -355,9 +391,15 @@ export class InvestigateState extends State<IsolatedYukaCharacter> {
         if (investigationDuration > this.maxInvestigationTime) {
             // Return to patrol or exploration
             if (Math.random() < 0.7) {
-                character.stateMachine.changeTo(new PatrolState());
+                if (!character.stateMachine.states.has('PATROL')) {
+                    character.stateMachine.add('PATROL', new PatrolState());
+                }
+                character.stateMachine.changeTo('PATROL');
             } else {
-                character.stateMachine.changeTo(new ExploreState());
+                if (!character.stateMachine.states.has('EXPLORE')) {
+                    character.stateMachine.add('EXPLORE', new ExploreState());
+                }
+                character.stateMachine.changeTo('EXPLORE');
             }
         }
     }
@@ -395,7 +437,10 @@ export class FleeState extends State<IsolatedYukaCharacter> {
         
         // If far enough away, stop fleeing
         if (distanceToThreat > this.safeDistance) {
-            character.stateMachine.changeTo(new IdleState());
+            if (!character.stateMachine.states.has('IDLE')) {
+                character.stateMachine.add('IDLE', new IdleState());
+            }
+            character.stateMachine.changeTo('IDLE');
             return;
         }
         
@@ -404,7 +449,10 @@ export class FleeState extends State<IsolatedYukaCharacter> {
         
         // Stop fleeing after max time (assume we're safe)
         if (fleeDuration > this.maxFleeTime) {
-            character.stateMachine.changeTo(new IdleState());
+            if (!character.stateMachine.states.has('IDLE')) {
+                character.stateMachine.add('IDLE', new IdleState());
+            }
+            character.stateMachine.changeTo('IDLE');
         }
     }
     

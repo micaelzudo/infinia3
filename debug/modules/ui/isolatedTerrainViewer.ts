@@ -41,6 +41,7 @@ import {
     getIsTheoreticalBoundariesActive,
     setRequestUpdateBoundaryVisualsCallback
 } from './proceduralGenerationPanel';
+import { getTerrainParameters } from '../../terrainGenerationUtils/terrainConfigurator';
 
 // Internal grid controls
 import {
@@ -325,7 +326,8 @@ export function initIsolatedViewer(container: HTMLDivElement, onYukaPanelReady?:
     // Initialize Yuka AI System
     if (scene && containerElement && renderer && camera) {
         // Initialize Yuka system asynchronously
-        initYuka(scene, camera, renderer.domElement)
+        const { noiseLayers, seed } = getTerrainParameters("DEFAULT"); // Or get planetType from somewhere
+        initYuka(scene, camera, renderer.domElement, noiseLayers, seed)
             .then(() => {
                 isYukaInitialized = true;
                 // Create Yuka AI Panel and connect spawn function only after initialization is complete
@@ -3954,7 +3956,9 @@ export async function toggleYukaAIPanelVisibility(visible?: boolean) {
                 // Check if Yuka is already initialized
                 if (!yukaEntityManager) {
                     console.log('Initializing Yuka system...');
-                    await initYuka(scene, camera, renderer.domElement);
+                    // const { noiseLayers, seed } = getTerrainParameters("DEFAULT"); // This line is removed as getTerrainParameters is already imported at the top
+                    const { noiseLayers, seed } = getTerrainParameters("DEFAULT");
+                    await initYuka(scene, camera, renderer.domElement, noiseLayers, seed);
                 }
                 
                 // Create the panel with the necessary options

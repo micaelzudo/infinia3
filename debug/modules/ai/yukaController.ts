@@ -1078,9 +1078,13 @@ export function spawnYukaAgent(position: THREE.Vector3 = new THREE.Vector3(0, CH
             }
             
             // Start with patrol state
-            if (newCharacter.stateMachine && typeof newCharacter.stateMachine.changeState === 'function') {
+            if (newCharacter.stateMachine && typeof newCharacter.stateMachine.changeTo === 'function') {
                 try {
-                    newCharacter.stateMachine.changeState(new aiStates.PatrolState());
+                    // Add PatrolState to the state machine if not already added
+                    if (!newCharacter.stateMachine.states.has('PATROL')) {
+                        newCharacter.stateMachine.add('PATROL', new aiStates.PatrolState());
+                    }
+                    newCharacter.stateMachine.changeTo('PATROL');
                     console.log(`[YukaController] Agent ${agentName} initialized with PatrolState`);
                 } catch (error) {
                     console.warn(`[YukaController] Failed to initialize PatrolState for ${agentName}:`, error);

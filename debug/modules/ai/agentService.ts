@@ -33,11 +33,15 @@ export async function spawnAgent(scene: THREE.Scene, camera: THREE.Camera, domEl
             agent.setAIControlled(aiControlled);
             
             // Initialize with patrol state if AI controlled
-            if (aiControlled && agent.stateMachine && typeof agent.stateMachine.changeState === 'function') {
+            if (aiControlled && agent.stateMachine && typeof agent.stateMachine.changeTo === 'function') {
                 const PatrolState = (window as any).PatrolState;
                 if (PatrolState) {
                     try {
-                        agent.stateMachine.changeState(new PatrolState());
+                        // Add and set initial state to patrol
+                        if (!agent.stateMachine.states.has('PATROL')) {
+                            agent.stateMachine.add('PATROL', new PatrolState());
+                        }
+                        agent.stateMachine.changeTo('PATROL');
                     } catch (error) {
                         console.warn('[AgentService] Failed to initialize patrol state:', error);
                     }
@@ -118,7 +122,10 @@ export function makeAgentChaseTarget(agent: IsolatedYukaCharacter, target: THREE
         if (ChaseState) {
             const chaseState = new ChaseState();
             chaseState.setTarget(target);
-            agent.stateMachine.changeState(chaseState);
+            if (!agent.stateMachine.states.has('CHASE')) {
+                agent.stateMachine.add('CHASE', chaseState);
+            }
+            agent.stateMachine.changeTo('CHASE');
             console.log(`[AgentService] Agent now chasing target:`, target);
             return true;
         }
@@ -132,7 +139,10 @@ export function makeAgentFleeFromThreat(agent: IsolatedYukaCharacter, threat: TH
         if (FleeState) {
             const fleeState = new FleeState();
             fleeState.setThreat(threat);
-            agent.stateMachine.changeState(fleeState);
+            if (!agent.stateMachine.states.has('FLEE')) {
+                agent.stateMachine.add('FLEE', fleeState);
+            }
+            agent.stateMachine.changeTo('FLEE');
             console.log(`[AgentService] Agent now fleeing from threat:`, threat);
             return true;
         }
